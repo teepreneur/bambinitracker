@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { BambiniText } from '@/components/design-system/BambiniText';
 import { BambiniInput } from '@/components/design-system/BambiniInput';
 import { BambiniButton } from '@/components/design-system/BambiniButton';
+import { ArrowLeft } from 'lucide-react-native';
 import Colors from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
 
@@ -50,6 +51,11 @@ export default function SignUpScreen() {
 
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+            <View style={styles.headerRow}>
+                <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+                    <ArrowLeft color={theme.text} size={28} />
+                </TouchableOpacity>
+            </View>
             <ScrollView contentContainerStyle={styles.scrollContent}>
                 <View style={styles.header}>
                     <BambiniText variant="h1" weight="bold">Create Account</BambiniText>
@@ -124,11 +130,21 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
     },
+    headerRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 24,
+        paddingTop: 10,
+    },
+    backBtn: {
+        padding: 8,
+        marginLeft: -8,
+    },
     scrollContent: {
         padding: 24,
     },
     header: {
-        marginTop: 20,
+        marginTop: 10,
         marginBottom: 32,
     },
     subtitle: {

@@ -32,7 +32,11 @@ export default function ProfileScreen() {
 
     const handleSignOut = async () => {
         const { error } = await supabase.auth.signOut();
-        if (error) Alert.alert('Error', error.message);
+        if (error) {
+            Alert.alert('Error', error.message);
+        } else {
+            router.replace('/(auth)/welcome');
+        }
     };
 
     return (

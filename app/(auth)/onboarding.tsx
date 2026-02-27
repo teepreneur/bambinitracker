@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import { BambiniText } from '@/components/design-system/BambiniText';
 import { BambiniButton } from '@/components/design-system/BambiniButton';
 import Colors from '@/constants/Colors';
-import { Sparkles, Camera, BarChart2 } from 'lucide-react-native';
+import { Sparkles, Camera, BarChart2, ArrowLeft } from 'lucide-react-native';
 
 const { width } = Dimensions.get('window');
 
@@ -46,9 +46,12 @@ export default function OnboardingScreen() {
 
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
-            <View style={styles.skipContainer}>
-                <TouchableOpacity onPress={() => router.push('/(auth)/signup')}>
-                    <BambiniText variant="body" color={theme.tabIconDefault}>Skip</BambiniText>
+            <View style={styles.headerRow}>
+                <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+                    <ArrowLeft color={theme.text} size={28} />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => router.push('/(auth)/signup')} style={styles.skipContainer}>
+                    <BambiniText variant="body" color={theme.tabIconDefault} weight="semibold">Skip</BambiniText>
                 </TouchableOpacity>
             </View>
 
@@ -94,10 +97,20 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
     },
-    skipContainer: {
-        alignItems: 'flex-end',
+    headerRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
         paddingHorizontal: 24,
         paddingTop: 10,
+    },
+    backBtn: {
+        padding: 8,
+        marginLeft: -8,
+    },
+    skipContainer: {
+        padding: 8,
+        marginRight: -8,
     },
     content: {
         flex: 1,
