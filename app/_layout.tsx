@@ -1,11 +1,20 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState } from 'react';
 import React from 'react';
 import 'react-native-reanimated';
+
+import {
+  useFonts,
+  Nunito_700Bold,
+  Nunito_600SemiBold
+} from '@expo-google-fonts/nunito';
+import {
+  Inter_400Regular,
+  Inter_500Medium
+} from '@expo-google-fonts/inter';
 
 import { useColorScheme } from '@/components/useColorScheme';
 
@@ -24,10 +33,10 @@ SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   const [loaded, error] = useFonts({
-    'Nunito-Bold': require('../assets/fonts/Nunito-Bold.ttf'),
-    'Nunito-SemiBold': require('../assets/fonts/Nunito-SemiBold.ttf'),
-    'Inter-Regular': require('../assets/fonts/Inter-Regular.ttf'),
-    'Inter-Medium': require('../assets/fonts/Inter-Medium.ttf'),
+    'Nunito-Bold': Nunito_700Bold,
+    'Nunito-SemiBold': Nunito_600SemiBold,
+    'Inter-Regular': Inter_400Regular,
+    'Inter-Medium': Inter_500Medium,
     ...FontAwesome.font,
   });
 
