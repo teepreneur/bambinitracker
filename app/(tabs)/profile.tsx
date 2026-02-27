@@ -1,3 +1,4 @@
+import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { BambiniText } from '@/components/design-system/BambiniText';
@@ -13,6 +14,22 @@ export default function ProfileScreen() {
     const colorScheme = useColorScheme();
     const theme = Colors[colorScheme === 'dark' ? 'dark' : 'light'];
 
+    const [userName, setUserName] = useState('');
+    const [userEmail, setUserEmail] = useState('');
+    const [role, setRole] = useState('parent');
+
+    useEffect(() => {
+        async function fetchUser() {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+                setUserName(user.user_metadata?.full_name || 'User Name');
+                setUserEmail(user.email || '');
+                setRole(user.user_metadata?.role || 'parent');
+            }
+        }
+        fetchUser();
+    }, []);
+
     const handleSignOut = async () => {
         const { error } = await supabase.auth.signOut();
         if (error) Alert.alert('Error', error.message);
@@ -22,10 +39,14 @@ export default function ProfileScreen() {
         <View style={[styles.container, { backgroundColor: theme.background }]}>
             <View style={styles.header}>
                 <View style={[styles.avatarPlaceholder, { backgroundColor: theme.primary + '20' }]}>
-                    <BambiniText variant="h1" color={theme.primary} weight="bold">A</BambiniText>
+                    <BambiniText variant="h1" color={theme.primary} weight="bold">
+                        {userName ? userName.charAt(0).toUpperCase() : 'U'}
+                    </BambiniText>
                 </View>
-                <BambiniText variant="h2" weight="bold" style={{ marginTop: 16 }}>Ama Tetteh</BambiniText>
-                <BambiniText variant="body" color={theme.textSecondary}>Parent Profile</BambiniText>
+                <BambiniText variant="h2" weight="bold" style={{ marginTop: 16 }}>{userName}</BambiniText>
+                <BambiniText variant="body" color={theme.textSecondary}>
+                    {role.charAt(0).toUpperCase() + role.slice(1)} Profile • {userEmail}
+                </BambiniText>
             </View>
 
             <View style={styles.section}>

@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, ScrollView, View, TouchableOpacity, Alert } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { BambiniText } from '@/components/design-system/BambiniText';
 import { BambiniCard } from '@/components/design-system/BambiniCard';
 import { Bell, ChevronRight } from 'lucide-react-native';
@@ -16,15 +16,20 @@ export default function HomeScreen() {
   const [loading, setLoading] = React.useState(true);
   const [children, setChildren] = React.useState<any[]>([]);
   const [selectedChild, setSelectedChild] = React.useState<any>(null);
+  const [userName, setUserName] = React.useState<string>('');
 
-  React.useEffect(() => {
-    fetchChildren();
-  }, []);
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchChildren();
+    }, [])
+  );
 
   async function fetchChildren() {
     try {
       const { data: userData } = await supabase.auth.getUser();
       if (!userData?.user) return;
+
+      setUserName(userData.user.user_metadata?.full_name || 'Parent');
 
       const { data, error } = await supabase
         .from('children')
@@ -57,7 +62,7 @@ export default function HomeScreen() {
       <View style={styles.header}>
         <View>
           <BambiniText variant="body" color={theme.textSecondary}>Good morning,</BambiniText>
-          <BambiniText variant="h2" weight="bold">Ama 👋</BambiniText>
+          <BambiniText variant="h2" weight="bold">{userName ? userName.split(' ')[0] : 'Parent'} 👋</BambiniText>
         </View>
         <TouchableOpacity style={styles.notificationBtn}>
           <Bell color={theme.text} size={22} />

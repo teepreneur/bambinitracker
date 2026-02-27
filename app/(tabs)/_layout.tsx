@@ -37,9 +37,9 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="explore"
+        name="activities"
         options={{
-          title: 'Explore',
+          title: 'Activities',
           tabBarIcon: ({ color }) => <Compass size={24} color={color} />,
         }}
       />
