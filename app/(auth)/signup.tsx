@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
-import { StyleSheet, View, SafeAreaView, ScrollView, TouchableOpacity, Alert } from 'react-native';
-import { useRouter } from 'expo-router';
-import { BambiniText } from '@/components/design-system/BambiniText';
-import { BambiniInput } from '@/components/design-system/BambiniInput';
 import { BambiniButton } from '@/components/design-system/BambiniButton';
+import { BambiniInput } from '@/components/design-system/BambiniInput';
+import { BambiniText } from '@/components/design-system/BambiniText';
 import Colors from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
+import { useRouter } from 'expo-router';
+import { ChevronLeft } from 'lucide-react-native';
+import React, { useState } from 'react';
+import { Alert, SafeAreaView, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 
 export default function SignUpScreen() {
     const router = useRouter();
@@ -49,12 +50,18 @@ export default function SignUpScreen() {
     }
 
     return (
-        <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+        <SafeAreaView style={[styles.container, { backgroundColor: '#f9f5ea' }]}>
             <ScrollView contentContainerStyle={styles.scrollContent}>
                 <View style={styles.header}>
+                    <TouchableOpacity
+                        style={styles.backButton}
+                        onPress={() => router.back()}
+                    >
+                        <ChevronLeft color={theme.text} size={28} />
+                    </TouchableOpacity>
                     <BambiniText variant="h1" weight="bold">Create Account</BambiniText>
                     <BambiniText variant="body" color="#636E72" style={styles.subtitle}>
-                        Join the Bambini community today
+                        Start tracking your child's journey
                     </BambiniText>
                 </View>
 
@@ -96,7 +103,7 @@ export default function SignUpScreen() {
                     <BambiniInput
                         label="Password"
                         placeholder="Min. 8 characters"
-                        secureTextEntry
+                        isPassword
                         value={password}
                         onChangeText={setPassword}
                     />
@@ -128,8 +135,18 @@ const styles = StyleSheet.create({
         padding: 24,
     },
     header: {
-        marginTop: 20,
+        marginTop: 10,
         marginBottom: 32,
+    },
+    backButton: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: '#F1F5F7',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 20,
+        marginLeft: -8,
     },
     subtitle: {
         marginTop: 8,

@@ -1,11 +1,11 @@
-import React from 'react';
-import { View, StyleSheet, ViewStyle, ShadowStyleProp } from 'react-native';
-import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
+import Colors from '@/constants/Colors';
+import React from 'react';
+import { StyleSheet, View } from 'react-native';
 
 interface BambiniCardProps {
     children: React.ReactNode;
-    style?: ViewStyle;
+    style?: any;
     variant?: 'elevated' | 'flat' | 'outline';
     padding?: 'none' | 'small' | 'medium' | 'large';
 }
