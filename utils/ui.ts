@@ -57,6 +57,16 @@ export const getDomainColor = (domain: string) => {
     }
 };
 
+export const DOMAINS = [
+    'Cognitive',
+    'Gross Motor',
+    'Fine Motor',
+    'Language',
+    'Social',
+    'Creative',
+    'Sensory'
+];
+
 export const getDynamicGreeting = (): string => {
     const hour = new Date().getHours();
     if (hour < 12) return 'Good morning,';

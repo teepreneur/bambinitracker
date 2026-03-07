@@ -17,6 +17,7 @@ export default {
     secondary: brandOrange,
     success: brandGreen,
     accent: brandPurple,
+    border: '#E6E6E6',
   },
   dark: {
     text: '#F8FBFC',
@@ -30,5 +31,6 @@ export default {
     secondary: brandOrange,
     success: brandGreen,
     accent: brandPurple,
+    border: '#333333',
   },
 };

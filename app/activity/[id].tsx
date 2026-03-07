@@ -7,6 +7,7 @@ import { useCompleteActivity } from '@/hooks/useData';
 import { supabase } from '@/lib/supabase';
 import { getActivityEmoji, getDomainColor } from '@/utils/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { BookOpen, CheckCircle2, ChevronLeft, Clock, Sparkles } from 'lucide-react-native';
 import React, { useState } from 'react';
@@ -35,7 +36,7 @@ export default function ActivityDetailScreen() {
         },
     });
 
-    // Check if this activity has been completed (has an observation)
+    // Check if this activity has been completed
     const { data: isCompleted } = useQuery({
         queryKey: ['activity_completed', id, childId],
         enabled: !!id && !!childId,
@@ -59,30 +60,23 @@ export default function ActivityDetailScreen() {
             return;
         }
 
-        Alert.alert(
-            "Complete Activity",
-            "Mark this activity as done? 🎉",
-            [
-                { text: "Not yet", style: "cancel" },
-                {
-                    text: "Yes, done!",
-                    style: "default",
-                    onPress: () => {
-                        completeActivity.mutate(
-                            { childId: childId as string, activityId: id as string },
-                            {
-                                onSuccess: () => {
-                                    setJustCompleted(true);
-                                    queryClient.invalidateQueries({ queryKey: ['activity_completed', id, childId] });
-                                },
-                                onError: (err) => {
-                                    Alert.alert("Error", err.message || "Failed to mark as complete.");
-                                }
-                            }
-                        );
-                    }
+        // Give immediate tactile feedback that the button was pressed
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+        completeActivity.mutate(
+            { childId: childId as string, activityId: id as string },
+            {
+                onSuccess: () => {
+                    // Premium tactile feedback for success
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                    setJustCompleted(true);
+                    queryClient.invalidateQueries({ queryKey: ['activity_completed', id, childId] });
+                },
+                onError: (err) => {
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                    Alert.alert("Error", err.message || "Failed to mark as complete.");
                 }
-            ]
+            }
         );
     };
 
@@ -90,21 +84,23 @@ export default function ActivityDetailScreen() {
     const emoji = getActivityEmoji(activity?.title || '');
     const completed = isCompleted || justCompleted;
 
+    const instructions: string[] = activity?.instructions || [];
+    const materials: string[] = activity?.materials || [];
+    const tips: string[] = activity?.tips || [];
+
     if (isLoading) {
         return (
-            <View style={[styles.container, { backgroundColor: '#FDFBF2' }]}>
-                <View style={styles.headerContainer}>
-                    <View style={[styles.mediaPlaceholder, { backgroundColor: '#E0E0E0' }]}>
-                        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-                            <ChevronLeft color="#1A1A1A" size={28} />
-                        </TouchableOpacity>
-                    </View>
+            <View style={[styles.container, { backgroundColor: '#f9f5ea' }]}>
+                <View style={[styles.heroHeader, { backgroundColor: '#FFFFFF', paddingBottom: 60 }]}>
+                    <TouchableOpacity style={styles.backButtonFloating} onPress={() => router.back()}>
+                        <ChevronLeft color="#1A1A1A" size={28} />
+                    </TouchableOpacity>
+                    <BambiniSkeleton width={120} height={120} borderRadius={60} style={{ alignSelf: 'center', marginTop: 100 }} />
                 </View>
                 <View style={styles.bodyContainer}>
                     <BambiniSkeleton width="80%" height={32} borderRadius={8} style={{ marginBottom: 16 }} />
                     <BambiniSkeleton width="40%" height={20} borderRadius={8} style={{ marginBottom: 24 }} />
-                    <BambiniSkeleton width="100%" height={80} borderRadius={12} style={{ marginBottom: 24 }} />
-                    <BambiniSkeleton width="100%" height={120} borderRadius={12} />
+                    <BambiniSkeleton width="100%" height={120} borderRadius={16} style={{ marginBottom: 24 }} />
                 </View>
             </View>
         );
@@ -112,7 +108,7 @@ export default function ActivityDetailScreen() {
 
     if (!activity) {
         return (
-            <View style={[styles.container, { backgroundColor: '#FDFBF2', justifyContent: 'center', alignItems: 'center' }]}>
+            <View style={[styles.container, { backgroundColor: '#f9f5ea', justifyContent: 'center', alignItems: 'center' }]}>
                 <TouchableOpacity style={styles.backButtonFloating} onPress={() => router.back()}>
                     <ChevronLeft color="#1A1A1A" size={28} />
                 </TouchableOpacity>
@@ -121,42 +117,33 @@ export default function ActivityDetailScreen() {
         );
     }
 
-    const instructions: string[] = activity.instructions || [];
-    const materials: string[] = activity.materials || [];
-    const tips: string[] = activity.tips || [];
-
     return (
-        <View style={{ flex: 1, backgroundColor: '#FDFBF2' }}>
+        <View style={{ flex: 1, backgroundColor: '#f9f5ea' }}>
             <ScrollView style={styles.container} showsVerticalScrollIndicator={false} bounces={false}>
-                {/* Header / Media Area */}
-                <View style={styles.headerContainer}>
-                    <View style={[styles.mediaPlaceholder, { backgroundColor: domainColor + '15' }]}>
-                        <View style={styles.emojiContainer}>
-                            <BambiniText style={{ fontSize: 72 }}>{emoji}</BambiniText>
-                        </View>
-                        <View style={[styles.domainBadgeHeader, { backgroundColor: domainColor + '25' }]}>
-                            <BambiniText variant="caption" weight="bold" color={domainColor}>
-                                {activity.domain}
-                            </BambiniText>
-                        </View>
-                    </View>
-
-                    {/* Back Button Overlay */}
-                    <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+                {/* Hero Header - White Card with Shadow */}
+                <View style={[styles.heroHeader, {
+                    shadowColor: domainColor,
+                    shadowOffset: { width: 0, height: 8 },
+                    shadowOpacity: 0.1,
+                    shadowRadius: 24,
+                    elevation: 10,
+                }]}>
+                    <TouchableOpacity style={styles.backButtonFloating} onPress={() => router.back()}>
                         <ChevronLeft color="#1A1A1A" size={28} />
                     </TouchableOpacity>
-                </View>
 
-                {/* Content Body */}
-                <View style={styles.bodyContainer}>
-                    <BambiniText variant="h1" weight="bold" style={{ fontSize: 26, color: '#1A1A1A', marginBottom: 12 }}>
+                    <View style={styles.emojiContainer}>
+                        <View style={[styles.emojiBackgroundRing, { backgroundColor: domainColor + '10' }]} />
+                        <View style={[styles.emojiBackgroundRing, { backgroundColor: domainColor + '20', width: 140, height: 140, position: 'absolute' }]} />
+                        <BambiniText style={{ fontSize: 80, zIndex: 10 }}>{emoji}</BambiniText>
+                    </View>
+
+                    <BambiniText variant="h1" weight="bold" style={{ fontSize: 28, color: '#1A1A1A', textAlign: 'center', marginTop: 16 }}>
                         {activity.title}
                     </BambiniText>
 
-                    {/* Meta Pills */}
                     <View style={styles.metaRow}>
-                        <View style={[styles.metaPill, { backgroundColor: domainColor + '15' }]}>
-                            <View style={[styles.domainDot, { backgroundColor: domainColor }]} />
+                        <View style={[styles.domainBadgeHeader, { borderColor: domainColor, borderWidth: 1, backgroundColor: '#FFFFFF' }]}>
                             <BambiniText variant="caption" weight="bold" color={domainColor}>
                                 {activity.domain}
                             </BambiniText>
@@ -169,22 +156,19 @@ export default function ActivityDetailScreen() {
                                 </BambiniText>
                             </View>
                         )}
-                        {activity.age_band && (
-                            <View style={[styles.metaPill, { backgroundColor: '#E8F8F5' }]}>
-                                <BambiniText variant="caption" weight="bold" color="#26B8B8">
-                                    {activity.age_band}
-                                </BambiniText>
-                            </View>
-                        )}
                         {completed && (
                             <View style={[styles.metaPill, { backgroundColor: '#E8F5E9' }]}>
                                 <CheckCircle2 color="#4CAF50" size={14} />
                                 <BambiniText variant="caption" weight="bold" color="#4CAF50" style={{ marginLeft: 4 }}>
-                                    Completed
+                                    Done
                                 </BambiniText>
                             </View>
                         )}
                     </View>
+                </View>
+
+                {/* Content Body */}
+                <View style={styles.bodyContainer}>
 
                     {/* Description */}
                     <BambiniText variant="body" color="#555555" style={styles.description}>
@@ -193,14 +177,17 @@ export default function ActivityDetailScreen() {
 
                     {/* Extended Description */}
                     {activity.extended_description && (
-                        <BambiniCard style={styles.extendedDescCard} variant="flat">
+                        <BambiniCard
+                            style={[styles.extendedDescCard, { borderColor: domainColor + '30', borderWidth: 1 }]}
+                            variant="flat"
+                        >
                             <View style={styles.extendedDescHeader}>
-                                <Sparkles color={domainColor} size={18} />
-                                <BambiniText variant="body" weight="bold" color="#1A1A1A" style={{ marginLeft: 8 }}>
+                                <Sparkles color={domainColor} size={20} />
+                                <BambiniText variant="h3" weight="bold" color="#1A1A1A" style={{ marginLeft: 8 }}>
                                     Why this matters
                                 </BambiniText>
                             </View>
-                            <BambiniText variant="body" color="#555555" style={{ lineHeight: 24, marginTop: 8 }}>
+                            <BambiniText variant="body" color="#555555" style={{ lineHeight: 24, marginTop: 10 }}>
                                 {activity.extended_description}
                             </BambiniText>
                         </BambiniCard>
@@ -208,18 +195,24 @@ export default function ActivityDetailScreen() {
 
                     {/* Instructions Checklist */}
                     {instructions.length > 0 && (
-                        <>
+                        <View style={styles.sectionBlock}>
                             <View style={styles.sectionHeader}>
-                                <BookOpen color={domainColor} size={20} />
-                                <BambiniText variant="h2" weight="bold" color="#1A1A1A" style={{ marginLeft: 8 }}>
-                                    Step-by-step
+                                <View style={[styles.iconHighlight, { backgroundColor: domainColor + '15' }]}>
+                                    <BookOpen color={domainColor} size={22} />
+                                </View>
+                                <BambiniText variant="h2" weight="bold" color="#1A1A1A" style={{ marginLeft: 12 }}>
+                                    How to play
                                 </BambiniText>
                             </View>
-                            <View style={styles.instructionsContainer}>
+
+                            <BambiniCard variant="elevated" style={styles.stepsCard}>
                                 {instructions.map((step: string, index: number) => (
-                                    <View key={index} style={styles.instructionStep}>
-                                        <View style={[styles.stepNumber, { backgroundColor: domainColor + '15' }]}>
-                                            <BambiniText variant="caption" weight="bold" color={domainColor}>
+                                    <View key={index} style={[
+                                        styles.instructionStep,
+                                        index !== instructions.length - 1 && styles.stepDivider
+                                    ]}>
+                                        <View style={[styles.stepNumber, { backgroundColor: domainColor }]}>
+                                            <BambiniText variant="caption" weight="bold" color="#FFFFFF">
                                                 {index + 1}
                                             </BambiniText>
                                         </View>
@@ -228,32 +221,32 @@ export default function ActivityDetailScreen() {
                                         </BambiniText>
                                     </View>
                                 ))}
-                            </View>
-                        </>
+                            </BambiniCard>
+                        </View>
                     )}
 
                     {/* Materials */}
                     {materials.length > 0 && (
-                        <>
-                            <View style={[styles.sectionHeader, { marginTop: 32 }]}>
-                                <BambiniText variant="h2" weight="bold" color="#1A1A1A">What you need</BambiniText>
-                            </View>
+                        <View style={styles.sectionBlock}>
+                            <BambiniText variant="h3" weight="bold" color="#1A1A1A" style={{ marginBottom: 12 }}>
+                                You'll need
+                            </BambiniText>
                             <View style={styles.materialsContainer}>
                                 {materials.map((mat: string, idx: number) => (
-                                    <BambiniCard key={idx} padding="small" style={styles.materialCard} variant="flat">
+                                    <View key={idx} style={[styles.materialPill, { borderColor: theme.border }]}>
                                         <BambiniText variant="body" color="#333333">{mat}</BambiniText>
-                                    </BambiniCard>
+                                    </View>
                                 ))}
                             </View>
-                        </>
+                        </View>
                     )}
 
                     {/* Tips */}
                     {tips.length > 0 && (
-                        <>
-                            <View style={[styles.sectionHeader, { marginTop: 32 }]}>
-                                <BambiniText variant="h2" weight="bold" color="#1A1A1A">💡 Tips</BambiniText>
-                            </View>
+                        <View style={styles.sectionBlock}>
+                            <BambiniText variant="h3" weight="bold" color="#1A1A1A" style={{ marginBottom: 16 }}>
+                                💡 Helpful Tips
+                            </BambiniText>
                             <View style={styles.tipsContainer}>
                                 {tips.map((tip: string, idx: number) => (
                                     <View key={idx} style={styles.tipRow}>
@@ -264,7 +257,7 @@ export default function ActivityDetailScreen() {
                                     </View>
                                 ))}
                             </View>
-                        </>
+                        </View>
                     )}
                 </View>
 
@@ -281,18 +274,18 @@ export default function ActivityDetailScreen() {
                         disabled={completeActivity.isPending}
                         activeOpacity={0.8}
                     >
-                        <CheckCircle2 color="#FFFFFF" size={22} />
-                        <BambiniText variant="body" weight="bold" color="#FFFFFF" style={{ marginLeft: 10 }}>
-                            {completeActivity.isPending ? 'Saving...' : 'Mark as Complete'}
+                        <CheckCircle2 color="#FFFFFF" size={24} />
+                        <BambiniText variant="h3" weight="bold" color="#FFFFFF" style={{ marginLeft: 12 }}>
+                            {completeActivity.isPending ? 'Saving...' : 'Mark as Complete 🎉'}
                         </BambiniText>
                     </TouchableOpacity>
                 </View>
             ) : (
                 <View style={styles.floatingButtonContainer}>
                     <View style={[styles.completeButton, { backgroundColor: '#4CAF50' }]}>
-                        <CheckCircle2 color="#FFFFFF" size={22} />
-                        <BambiniText variant="body" weight="bold" color="#FFFFFF" style={{ marginLeft: 10 }}>
-                            Activity Completed! 🎉
+                        <CheckCircle2 color="#FFFFFF" size={24} />
+                        <BambiniText variant="h3" weight="bold" color="#FFFFFF" style={{ marginLeft: 12 }}>
+                            Activity Completed!
                         </BambiniText>
                     </View>
                 </View>
@@ -305,47 +298,35 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
     },
-    headerContainer: {
+    heroHeader: {
         width: '100%',
-        height: 280,
-        position: 'relative',
-    },
-    mediaPlaceholder: {
-        flex: 1,
-        alignItems: 'center',
-        justifyContent: 'center',
+        backgroundColor: '#FFFFFF',
         borderBottomLeftRadius: 40,
         borderBottomRightRadius: 40,
+        paddingTop: 100,
+        paddingBottom: 32,
+        paddingHorizontal: 24,
+        alignItems: 'center',
+        zIndex: 10,
     },
     emojiContainer: {
-        width: 120,
-        height: 120,
-        borderRadius: 60,
-        backgroundColor: 'rgba(255,255,255,0.6)',
+        width: 160,
+        height: 160,
         alignItems: 'center',
         justifyContent: 'center',
-        marginBottom: 12,
+        position: 'relative',
+        marginBottom: 8,
+    },
+    emojiBackgroundRing: {
+        width: 120,
+        height: 120,
+        borderRadius: 100,
+        position: 'absolute',
     },
     domainBadgeHeader: {
         paddingHorizontal: 16,
         paddingVertical: 6,
         borderRadius: 20,
-    },
-    backButton: {
-        position: 'absolute',
-        top: 60,
-        left: 20,
-        width: 44,
-        height: 44,
-        borderRadius: 22,
-        backgroundColor: '#FFFFFF',
-        alignItems: 'center',
-        justifyContent: 'center',
-        shadowColor: '#1A1A1A',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-        elevation: 3,
     },
     backButtonFloating: {
         position: 'absolute',
@@ -354,20 +335,27 @@ const styles = StyleSheet.create({
         width: 44,
         height: 44,
         borderRadius: 22,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: '#f9f5ea',
         alignItems: 'center',
         justifyContent: 'center',
+        shadowColor: '#1A1A1A',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 3,
+        zIndex: 100,
     },
     bodyContainer: {
-        paddingHorizontal: 24,
-        paddingTop: 24,
+        paddingHorizontal: 20,
+        paddingTop: 32,
     },
     metaRow: {
         flexDirection: 'row',
         alignItems: 'center',
+        justifyContent: 'center',
         flexWrap: 'wrap',
         gap: 8,
-        marginBottom: 20,
+        marginTop: 16,
     },
     metaPill: {
         flexDirection: 'row',
@@ -376,22 +364,20 @@ const styles = StyleSheet.create({
         paddingVertical: 6,
         borderRadius: 20,
     },
-    domainDot: {
-        width: 8,
-        height: 8,
-        borderRadius: 4,
-        marginRight: 6,
-    },
     description: {
-        lineHeight: 24,
+        lineHeight: 26,
+        fontSize: 16,
         marginBottom: 24,
+        textAlign: 'center',
+    },
+    sectionBlock: {
+        marginBottom: 32,
     },
     extendedDescCard: {
-        backgroundColor: '#F8F6EE',
-        borderRadius: 16,
-        padding: 16,
+        backgroundColor: '#FFFFFF',
+        borderRadius: 24,
+        padding: 24,
         marginBottom: 32,
-        borderWidth: 0,
     },
     extendedDescHeader: {
         flexDirection: 'row',
@@ -402,12 +388,32 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         marginBottom: 16,
     },
-    instructionsContainer: {
-        gap: 20,
+    iconHighlight: {
+        width: 44,
+        height: 44,
+        borderRadius: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    stepsCard: {
+        backgroundColor: '#FFFFFF',
+        borderRadius: 24,
+        padding: 20,
+        borderWidth: 0,
+        shadowColor: 'rgba(0,0,0,0.05)',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 10,
+        elevation: 2,
     },
     instructionStep: {
         flexDirection: 'row',
         alignItems: 'flex-start',
+        paddingVertical: 14,
+    },
+    stepDivider: {
+        borderBottomWidth: 1,
+        borderBottomColor: '#F0F0F0',
     },
     stepNumber: {
         width: 32,
@@ -421,29 +427,34 @@ const styles = StyleSheet.create({
     stepText: {
         flex: 1,
         lineHeight: 24,
+        fontSize: 15,
     },
     materialsContainer: {
         flexDirection: 'row',
         flexWrap: 'wrap',
-        gap: 12,
+        gap: 10,
     },
-    materialCard: {
+    materialPill: {
         backgroundColor: '#FFFFFF',
         borderWidth: 1,
-        borderColor: '#E8F1F5',
-        borderRadius: 12,
+        borderRadius: 20,
+        paddingHorizontal: 16,
+        paddingVertical: 10,
     },
     tipsContainer: {
-        gap: 12,
+        gap: 14,
+        backgroundColor: '#FFFFFF',
+        padding: 20,
+        borderRadius: 24,
     },
     tipRow: {
         flexDirection: 'row',
         alignItems: 'flex-start',
     },
     tipDot: {
-        width: 6,
-        height: 6,
-        borderRadius: 3,
+        width: 8,
+        height: 8,
+        borderRadius: 4,
         marginRight: 12,
         marginTop: 8,
     },
@@ -455,18 +466,18 @@ const styles = StyleSheet.create({
         paddingHorizontal: 24,
         paddingVertical: 20,
         paddingBottom: 40,
-        backgroundColor: 'rgba(253, 251, 242, 0.95)',
+        backgroundColor: 'rgba(249, 245, 234, 0.95)',
     },
     completeButton: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        paddingVertical: 18,
-        borderRadius: 28,
+        paddingVertical: 20,
+        borderRadius: 32,
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.15,
-        shadowRadius: 12,
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.1,
+        shadowRadius: 16,
         elevation: 5,
     },
 });

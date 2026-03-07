@@ -56,6 +56,25 @@ export function useUserObservations() {
     });
 }
 
+// Fetch the entire activities library for the Discover tab
+export function useActivitiesLibrary() {
+    return useQuery({
+        queryKey: ['activities_library'],
+        queryFn: async () => {
+            const { data, error } = await supabase
+                .from('activities')
+                .select('*')
+                .order('min_age_months', { ascending: true });
+
+            if (error) {
+                console.error("[useActivitiesLibrary] Failed to fetch activities:", error);
+                throw error;
+            }
+            return data;
+        },
+    });
+}
+
 // Fetch activities assigned to a specific child, cross-referenced with observations for completion
 export function useChildActivities(childId?: string, ageDays?: number) {
     return useQuery({
