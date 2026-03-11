@@ -380,8 +380,129 @@ export function useGenerateInviteCode() {
                 .select()
                 .single();
 
+            return data;
+        },
+    });
+}
+
+// --- Growth & Milestones Hooks ---
+
+export function useMilestonesCatalog() {
+    return useQuery({
+        queryKey: ['milestones_catalog'],
+        queryFn: async () => {
+            const { data, error } = await supabase
+                .from('milestones_catalog')
+                .select('*')
+                .order('age_months', { ascending: true });
             if (error) throw error;
             return data;
+        },
+    });
+}
+
+export function useChildMilestones(childId: string | undefined) {
+    return useQuery({
+        queryKey: ['child_milestones', childId],
+        enabled: !!childId,
+        queryFn: async () => {
+            const { data, error } = await supabase
+                .from('child_milestones')
+                .select('*, milestone:milestones_catalog(*)')
+                .eq('child_id', childId);
+            if (error) throw error;
+            return data;
+        },
+    });
+}
+
+export type MilestoneStatus = 'not_yet' | 'emerging' | 'achieved';
+
+export function useToggleChildMilestone() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async ({
+            childId,
+            milestoneId,
+            status,
+        }: { childId: string; milestoneId: string; status: MilestoneStatus | null }) => {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) throw new Error('Not authenticated');
+
+            if (status === null) {
+                // Remove the entry — parent is clearing their response
+                const { error } = await supabase
+                    .from('child_milestones')
+                    .delete()
+                    .match({ child_id: childId, milestone_id: milestoneId });
+                if (error) throw error;
+            } else {
+                // Upsert with the selected status
+                const { error } = await supabase
+                    .from('child_milestones')
+                    .upsert(
+                        {
+                            child_id: childId,
+                            milestone_id: milestoneId,
+                            status,
+                            achieved_date: status === 'achieved' ? new Date().toISOString() : null,
+                            recorded_by: user.id,
+                        },
+                        { onConflict: 'child_id,milestone_id' }
+                    );
+                if (error) throw error;
+            }
+        },
+        onSuccess: (_, variables) => {
+            queryClient.invalidateQueries({ queryKey: ['child_milestones', variables.childId] });
+        },
+    });
+}
+
+export function useGrowthMeasurements(childId: string | undefined) {
+    return useQuery({
+        queryKey: ['growth_measurements', childId],
+        enabled: !!childId,
+        queryFn: async () => {
+            const { data, error } = await supabase
+                .from('growth_measurements')
+                .select('*')
+                .eq('child_id', childId)
+                .order('date', { ascending: true }); // Important for charts to be chronologically ordered
+
+            if (error) throw error;
+            return data;
+        },
+    });
+}
+
+export function useAddGrowthMeasurement() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (measurementData: {
+            child_id: string;
+            date: string;
+            weight_kg?: number | null;
+            height_cm?: number | null;
+            head_circumference_cm?: number | null;
+        }) => {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) throw new Error('Not authenticated');
+
+            const { data, error } = await supabase
+                .from('growth_measurements')
+                .insert({
+                    ...measurementData,
+                    recorded_by: user.id
+                })
+                .select()
+                .single();
+
+            if (error) throw error;
+            return data;
+        },
+        onSuccess: (_, variables) => {
+            queryClient.invalidateQueries({ queryKey: ['growth_measurements', variables.child_id] });
         },
     });
 }

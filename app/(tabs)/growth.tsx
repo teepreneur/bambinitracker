@@ -1,77 +1,148 @@
-import { BambiniCard } from '@/components/design-system/BambiniCard';
 import { BambiniText } from '@/components/design-system/BambiniText';
 import { ChildAvatar } from '@/components/design-system/ChildAvatar';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
-import React, { useState } from 'react';
-import { Dimensions, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
-import Svg, { Circle, G, Line, Polygon, Text as SvgText } from 'react-native-svg';
+import {
+    MilestoneStatus,
+    useChildMilestones,
+    useChildren,
+    useMilestonesCatalog,
+    useToggleChildMilestone,
+} from '@/hooks/useData';
+import * as Haptics from 'expo-haptics';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+    ActivityIndicator,
+    Animated,
+    Dimensions,
+    ScrollView,
+    StyleSheet,
+    TouchableOpacity,
+    View,
+} from 'react-native';
+import Svg, { G, Line, Polygon, Circle as SvgCircle, Text as SvgText } from 'react-native-svg';
 
 const { width } = Dimensions.get('window');
-const CHART_SIZE = width * 0.75;
+const CHART_SIZE = width * 0.78;
 const CENTER = CHART_SIZE / 2;
-const RADIUS = CHART_SIZE * 0.4;
+const RADIUS = CHART_SIZE * 0.36;
 
-const DOMAINS = [
-    { name: 'Cognitive', color: '#9D78DD', value: 80 },
-    { name: 'Physical', color: '#79C37A', value: 65 },
-    { name: 'Language', color: '#F5A623', value: 90 },
-    { name: 'Social', color: '#26B8B8', value: 85 },
-    { name: 'Creative', color: '#F5D547', value: 70 },
+const RADAR_DOMAINS = [
+    { key: 'cognitive', label: 'Cognitive', color: '#A67BB5' },
+    { key: 'gross motor', label: 'Gross Motor', color: '#8DC63F' },
+    { key: 'fine motor', label: 'Fine Motor', color: '#3B82F6' },
+    { key: 'language', label: 'Language', color: '#F5A623' },
+    { key: 'social', label: 'Social', color: '#4ECDC4' },
+    { key: 'creative', label: 'Creative', color: '#FFD166' },
+    { key: 'sensory', label: 'Sensory', color: '#EC4899' },
 ];
+
+function getDomainColor(domain: string): string {
+    const d = RADAR_DOMAINS.find(r => r.key === domain?.toLowerCase());
+    return d?.color ?? '#A67BB5';
+}
+
+/** Convert a MilestoneStatus to a numeric score for the radar */
+function statusScore(status: MilestoneStatus | undefined): number {
+    if (status === 'achieved') return 1.0;
+    if (status === 'emerging') return 0.5;
+    return 0;
+}
+
+function radarCoord(value: number, index: number, total: number) {
+    const angle = (Math.PI * 2 * index) / total - Math.PI / 2;
+    const r = (value / 100) * RADIUS;
+    return { x: CENTER + r * Math.cos(angle), y: CENTER + r * Math.sin(angle) };
+}
+
+// ─── Root Screen ─────────────────────────────────────────────────────────────
 
 export default function GrowthScreen() {
     const colorScheme = useColorScheme();
     const theme = Colors[colorScheme === 'dark' ? 'dark' : 'light'];
-    const [activeTab, setActiveTab] = useState('Chart');
+    const [activeTab, setActiveTab] = useState<'Overview' | 'Milestones'>('Overview');
+    const [selectedChildIndex, setSelectedChildIndex] = useState(0);
 
-    // Radar Chart Math Calculations
-    const getCoordinatesForValue = (value: number, index: number, total: number) => {
-        const angle = (Math.PI * 2 * index) / total - Math.PI / 2;
-        // value is a percentage (0-100)
-        const pointRadius = (value / 100) * RADIUS;
-        const x = CENTER + pointRadius * Math.cos(angle);
-        const y = CENTER + pointRadius * Math.sin(angle);
-        return { x, y };
-    };
-
-    const radarPoints = DOMAINS.map((domain, i) => getCoordinatesForValue(domain.value, i, DOMAINS.length));
-    const radarPolygonPoints = radarPoints.map(p => `${p.x},${p.y}`).join(' ');
-
-    // Generate grid rings
-    const gridRings = [0.2, 0.4, 0.6, 0.8, 1.0].map(scale => {
-        const points = DOMAINS.map((_, i) => getCoordinatesForValue(scale * 100, i, DOMAINS.length));
-        return points.map(p => `${p.x},${p.y}`).join(' ');
-    });
+    const { data: children, isLoading: loadingChildren } = useChildren();
+    const child = children?.[selectedChildIndex];
 
     return (
-        <ScrollView style={[styles.container, { backgroundColor: '#FDFBF2' }]} contentContainerStyle={{ paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
+        <ScrollView
+            style={[styles.container, { backgroundColor: '#f9f5ea' }]}
+            contentContainerStyle={{ paddingBottom: 120 }}
+            showsVerticalScrollIndicator={false}
+        >
             {/* Header */}
             <View style={styles.header}>
-                <BambiniText variant="h1" weight="bold" color="#333333" style={{ fontSize: 24 }}>Growth Radar</BambiniText>
-
-                <View style={[styles.headerAvatarBorder, { borderColor: '#3DBBB8' }]}>
-                    <ChildAvatar photoUrl={null} size={42} />
+                <View>
+                    <BambiniText variant="h1" weight="bold" color={theme.text} style={{ fontSize: 24 }}>
+                        Growth
+                    </BambiniText>
+                    <BambiniText variant="caption" color={theme.textSecondary}>
+                        Developmental milestone tracker
+                    </BambiniText>
                 </View>
             </View>
 
+            {/* Child Selector */}
+            {loadingChildren ? (
+                <ActivityIndicator size="small" color={theme.primary} style={{ marginBottom: 24 }} />
+            ) : children && children.length > 0 ? (
+                <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={{ marginBottom: 24 }}
+                    contentContainerStyle={{ paddingHorizontal: 2, gap: 10 }}
+                >
+                    {children.map((c: any, i: number) => {
+                        const isSelected = i === selectedChildIndex;
+                        return (
+                            <TouchableOpacity
+                                key={c.id}
+                                onPress={() => {
+                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                    setSelectedChildIndex(i);
+                                }}
+                                style={[
+                                    styles.childChip,
+                                    {
+                                        backgroundColor: isSelected ? theme.primary : theme.surface,
+                                        borderColor: isSelected ? theme.primary : theme.border,
+                                    },
+                                ]}
+                            >
+                                <ChildAvatar photoUrl={c.photo_url} size={28} />
+                                <BambiniText
+                                    variant="caption"
+                                    weight={isSelected ? 'bold' : 'medium'}
+                                    color={isSelected ? '#FFFFFF' : theme.text}
+                                    style={{ marginLeft: 6 }}
+                                >
+                                    {c.name}
+                                </BambiniText>
+                            </TouchableOpacity>
+                        );
+                    })}
+                </ScrollView>
+            ) : null}
+
             {/* Tab Switcher */}
-            <View style={styles.tabContainer}>
-                {['Chart', 'Milestones', 'Timeline'].map((tab) => {
+            <View style={[styles.tabContainer, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+                {(['Overview', 'Milestones'] as const).map((tab) => {
                     const isActive = activeTab === tab;
                     return (
                         <TouchableOpacity
                             key={tab}
-                            style={[
-                                styles.tabSegment,
-                                isActive && { backgroundColor: '#3DBBB8' }
-                            ]}
-                            onPress={() => setActiveTab(tab)}
+                            style={[styles.tabSegment, isActive && { backgroundColor: theme.primary }]}
+                            onPress={() => {
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                setActiveTab(tab);
+                            }}
                         >
                             <BambiniText
                                 variant="caption"
-                                weight={isActive ? "bold" : "medium"}
-                                color={isActive ? "#FFFFFF" : "#333333"}
+                                weight={isActive ? 'bold' : 'medium'}
+                                color={isActive ? '#FFFFFF' : theme.text}
                             >
                                 {tab}
                             </BambiniText>
@@ -80,192 +151,804 @@ export default function GrowthScreen() {
                 })}
             </View>
 
-            {/* Content Area */}
-            {activeTab === 'Chart' && (
-                <View style={styles.chartSection}>
-                    {/* SVG Radar Chart */}
-                    <View style={styles.chartWrapper}>
-                        <Svg height={CHART_SIZE} width={CHART_SIZE}>
-                            {/* Grid Rings */}
-                            {gridRings.map((points, index) => (
-                                <Polygon
-                                    key={`ring-${index}`}
-                                    points={points}
-                                    fill="none"
-                                    stroke="#E5E0D8"
-                                    strokeWidth="1"
-                                />
-                            ))}
-
-                            {/* Axis Lines */}
-                            {DOMAINS.map((_, i) => {
-                                const endPoint = getCoordinatesForValue(100, i, DOMAINS.length);
-                                return (
-                                    <Line
-                                        key={`axis-${i}`}
-                                        x1={CENTER}
-                                        y1={CENTER}
-                                        x2={endPoint.x}
-                                        y2={endPoint.y}
-                                        stroke="#E5E0D8"
-                                        strokeWidth="1"
-                                    />
-                                );
-                            })}
-
-                            {/* Data Polygon */}
-                            <G>
-                                <Polygon
-                                    points={radarPolygonPoints}
-                                    fill="#3DBBB8"
-                                    fillOpacity="0.3"
-                                    stroke="#3DBBB8"
-                                    strokeWidth="2"
-                                />
-                                {/* Value Markers */}
-                                {radarPoints.map((point, i) => (
-                                    <Circle
-                                        key={`marker-${i}`}
-                                        cx={point.x}
-                                        cy={point.y}
-                                        r="4"
-                                        fill={DOMAINS[i].color}
-                                    />
-                                ))}
-                            </G>
-
-                            {/* Labels */}
-                            {DOMAINS.map((domain, i) => {
-                                // Push labels out slightly further than the outermost ring
-                                const labelPoint = getCoordinatesForValue(115, i, DOMAINS.length);
-                                return (
-                                    <SvgText
-                                        key={`label-${i}`}
-                                        x={labelPoint.x}
-                                        y={labelPoint.y + 4} // slight vertical shift for centering
-                                        fontSize="12"
-                                        fill="#555555"
-                                        textAnchor="middle"
-                                        fontWeight="500"
-                                    >
-                                        {domain.name}
-                                    </SvgText>
-                                );
-                            })}
-                        </Svg>
-                    </View>
-
-                    {/* Legend */}
-                    <View style={styles.legendContainer}>
-                        <View style={styles.legendRow}>
-                            {DOMAINS.slice(0, 3).map((domain) => (
-                                <View key={domain.name} style={styles.legendItem}>
-                                    <View style={[styles.legendDot, { backgroundColor: domain.color }]} />
-                                    <BambiniText variant="caption" color="#555555">{domain.name}</BambiniText>
-                                </View>
-                            ))}
-                        </View>
-                        <View style={styles.legendRow}>
-                            {DOMAINS.slice(3).map((domain) => (
-                                <View key={domain.name} style={styles.legendItem}>
-                                    <View style={[styles.legendDot, { backgroundColor: domain.color }]} />
-                                    <BambiniText variant="caption" color="#555555">{domain.name}</BambiniText>
-                                </View>
-                            ))}
-                        </View>
-                    </View>
-
-                    {/* Analysis Summary */}
-                    <BambiniCard style={styles.summaryCard} variant="elevated">
-                        <BambiniText variant="body" color="#333333">
-                            <BambiniText variant="body" weight="bold" color="#000000">Strongest Areas: </BambiniText>
-                            Ama Jr. excels in Language and Social development.
-                        </BambiniText>
-                    </BambiniCard>
-
+            {/* Content */}
+            {!child ? (
+                <View style={styles.emptyState}>
+                    <BambiniText variant="body" color={theme.textSecondary}>
+                        No child profile found. Add a child to get started.
+                    </BambiniText>
                 </View>
-            )}
-
-            {activeTab !== 'Chart' && (
-                <View style={{ marginTop: 40, alignItems: 'center' }}>
-                    <BambiniText variant="body" color="#8E8E93">{activeTab} view coming soon.</BambiniText>
-                </View>
+            ) : activeTab === 'Overview' ? (
+                <OverviewTab childId={child.id} childName={child.name} theme={theme} />
+            ) : (
+                <MilestonesTab childId={child.id} childDob={child.dob} theme={theme} />
             )}
         </ScrollView>
     );
 }
 
+// ─── Overview Tab ─────────────────────────────────────────────────────────────
+
+function OverviewTab({ childId, childName, theme }: { childId: string; childName: string; theme: any }) {
+    const { data: catalog } = useMilestonesCatalog();
+    const { data: achievedMilestones, isLoading } = useChildMilestones(childId);
+
+    // Build a map: milestone_id → status
+    const statusMap = useMemo(() => {
+        const map: Record<string, MilestoneStatus> = {};
+        achievedMilestones?.forEach((cm: any) => {
+            map[cm.milestone_id] = cm.status as MilestoneStatus;
+        });
+        return map;
+    }, [achievedMilestones]);
+
+    // Compute domain scores (0-100) weighted by status
+    const domainScores = useMemo(() => {
+        if (!catalog) return RADAR_DOMAINS.map(() => 0);
+        return RADAR_DOMAINS.map(({ key }) => {
+            const items = catalog.filter((m: any) => m.domain?.toLowerCase() === key);
+            if (items.length === 0) return 0;
+            const score = items.reduce((sum: number, m: any) => sum + statusScore(statusMap[m.id]), 0);
+            return Math.round((score / items.length) * 100);
+        });
+    }, [catalog, statusMap]);
+
+    const totalAnswered = Object.keys(statusMap).length;
+    const totalAchieved = Object.values(statusMap).filter(s => s === 'achieved').length;
+    const totalMilestones = catalog?.length ?? 0;
+    const overallPct = totalMilestones > 0 ? Math.round((totalAchieved / totalMilestones) * 100) : 0;
+
+    const radarPoints = RADAR_DOMAINS.map((_, i) => radarCoord(domainScores[i] || 2, i, RADAR_DOMAINS.length));
+    const radarPolygonPoints = radarPoints.map(p => `${p.x},${p.y}`).join(' ');
+    const gridRings = [20, 40, 60, 80, 100].map(pct =>
+        RADAR_DOMAINS.map((_, i) => radarCoord(pct, i, RADAR_DOMAINS.length)).map(p => `${p.x},${p.y}`).join(' ')
+    );
+
+    return (
+        <View>
+            {/* Summary Card */}
+            <View style={[styles.summaryCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+                <BambiniText variant="h3" weight="bold" color={theme.text}>
+                    {childName}'s Development
+                </BambiniText>
+                <BambiniText variant="caption" color={theme.textSecondary} style={{ marginTop: 4 }}>
+                    {totalAnswered} of {totalMilestones} milestones assessed · {totalAchieved} fully achieved
+                </BambiniText>
+                <View style={[styles.progressTrack, { backgroundColor: theme.border, marginTop: 12 }]}>
+                    <View style={[styles.progressFill, { width: `${overallPct}%` as any, backgroundColor: theme.primary }]} />
+                </View>
+                <BambiniText variant="caption" color={theme.textSecondary} style={{ marginTop: 6, fontStyle: 'italic' }}>
+                    Go to Milestones tab to record progress on each area
+                </BambiniText>
+            </View>
+
+            {/* Radar Chart */}
+            {isLoading ? (
+                <ActivityIndicator size="large" color={theme.primary} style={{ marginTop: 40 }} />
+            ) : (
+                <View style={[styles.chartWrapper, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+                    <BambiniText variant="caption" weight="bold" color={theme.textSecondary} style={{ marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 }}>
+                        Domain Radar
+                    </BambiniText>
+                    <Svg height={CHART_SIZE} width={CHART_SIZE}>
+                        {gridRings.map((pts, idx) => (
+                            <Polygon key={`ring-${idx}`} points={pts} fill="none" stroke={theme.border} strokeWidth="1" />
+                        ))}
+                        {RADAR_DOMAINS.map((_, i) => {
+                            const end = radarCoord(100, i, RADAR_DOMAINS.length);
+                            return <Line key={`axis-${i}`} x1={CENTER} y1={CENTER} x2={end.x} y2={end.y} stroke={theme.border} strokeWidth="1" />;
+                        })}
+                        <G>
+                            <Polygon points={radarPolygonPoints} fill={theme.primary} fillOpacity="0.22" stroke={theme.primary} strokeWidth="2.5" />
+                            {radarPoints.map((pt, i) => (
+                                <SvgCircle key={`dot-${i}`} cx={pt.x} cy={pt.y} r="5" fill={RADAR_DOMAINS[i].color} />
+                            ))}
+                        </G>
+                        {RADAR_DOMAINS.map((d, i) => {
+                            const lp = radarCoord(120, i, RADAR_DOMAINS.length);
+                            return (
+                                <SvgText key={`lbl-${i}`} x={lp.x} y={lp.y + 4} fontSize="10" fill={theme.text} textAnchor="middle" fontWeight="600">
+                                    {d.label}
+                                </SvgText>
+                            );
+                        })}
+                    </Svg>
+                </View>
+            )}
+
+            {/* Domain Progress bars */}
+            <View style={styles.legendGrid}>
+                {RADAR_DOMAINS.map((d, i) => (
+                    <View key={d.key} style={[styles.legendItem, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                                <View style={[styles.legendDot, { backgroundColor: d.color }]} />
+                                <BambiniText variant="caption" weight="semibold" color={theme.text} style={{ marginLeft: 6 }}>
+                                    {d.label}
+                                </BambiniText>
+                            </View>
+                            <BambiniText variant="caption" color={theme.textSecondary}>{domainScores[i]}%</BambiniText>
+                        </View>
+                        <View style={[styles.progressTrack, { backgroundColor: theme.border }]}>
+                            <View style={[styles.progressFill, { width: `${domainScores[i]}%` as any, backgroundColor: d.color }]} />
+                        </View>
+                    </View>
+                ))}
+            </View>
+        </View>
+    );
+}
+
+// ─── Age Stage Config ────────────────────────────────────────────────────────
+
+const AGE_STAGES = [
+    { label: '0–3m', shortLabel: '0–3m', minAge: 0, maxAge: 3 },
+    { label: '3–6m', shortLabel: '3–6m', minAge: 3, maxAge: 6 },
+    { label: '6–9m', shortLabel: '6–9m', minAge: 6, maxAge: 9 },
+    { label: '9–12m', shortLabel: '9–12m', minAge: 9, maxAge: 12 },
+    { label: '1–1.5y', shortLabel: '1–1.5y', minAge: 12, maxAge: 18 },
+    { label: '1.5–2y', shortLabel: '1.5–2y', minAge: 18, maxAge: 24 },
+    { label: '2–3 yrs', shortLabel: '2–3y', minAge: 24, maxAge: 36 },
+    { label: '3–4 yrs', shortLabel: '3–4y', minAge: 36, maxAge: 48 },
+    { label: '4–5 yrs', shortLabel: '4–5y', minAge: 48, maxAge: 60 },
+    { label: '5–6 yrs', shortLabel: '5–6y', minAge: 60, maxAge: 73 },
+];
+
+// ─── Domain display helpers ──────────────────────────────────────────────────
+
+const DOMAIN_EMOJIS: Record<string, string> = {
+    'cognitive': '🧠',
+    'gross motor': '💪',
+    'fine motor': '✋',
+    'language': '🗣️',
+    'social': '🤝',
+    'creative': '🎨',
+    'sensory': '👁️',
+};
+
+function getDomainEmoji(domain: string): string {
+    return DOMAIN_EMOJIS[domain?.toLowerCase()] ?? '📌';
+}
+
+const TIP_MASCOTS = ['🦥', '🧸', '🐣', '🌟', '🐰', '🦉', '🐝', '🧑‍🍳'];
+
+// ─── Milestones Tab ───────────────────────────────────────────────────────────
+
+function getAgeInMonths(dob: string | undefined): number {
+    if (!dob) return 0;
+    const birth = new Date(dob);
+    const now = new Date();
+    return (now.getFullYear() - birth.getFullYear()) * 12 + (now.getMonth() - birth.getMonth());
+}
+
+function getDefaultStageIndex(ageMonths: number): number {
+    for (let i = AGE_STAGES.length - 1; i >= 0; i--) {
+        if (ageMonths >= AGE_STAGES[i].minAge) return i;
+    }
+    return 0;
+}
+
+const STATUS_OPTIONS: { label: string; value: MilestoneStatus; color: string }[] = [
+    { label: 'Not Yet', value: 'not_yet', color: '#9CA3AF' },
+    { label: 'Sometimes', value: 'emerging', color: '#F5A623' },
+    { label: 'Yes! ✓', value: 'achieved', color: '#22C55E' },
+];
+
+function MilestonesTab({ childId, childDob, theme }: { childId: string; childDob?: string; theme: any }) {
+    const ageMonths = getAgeInMonths(childDob);
+    const defaultStage = getDefaultStageIndex(ageMonths);
+
+    const { data: catalog, isLoading: loadingCatalog } = useMilestonesCatalog();
+    const { data: achievedMilestones, isLoading: loadingAchieved } = useChildMilestones(childId);
+    const { mutate: setMilestoneStatus } = useToggleChildMilestone();
+    const [selectedStageIndex, setSelectedStageIndex] = useState(defaultStage);
+
+    // Build status map: milestone_id → status
+    const statusMap = useMemo(() => {
+        const map: Record<string, MilestoneStatus> = {};
+        achievedMilestones?.forEach((cm: any) => {
+            map[cm.milestone_id] = cm.status as MilestoneStatus;
+        });
+        return map;
+    }, [achievedMilestones]);
+
+    // Group catalog into each age stage bucket
+    const stageData = useMemo(() => {
+        if (!catalog) return AGE_STAGES.map(() => [] as any[]);
+        return AGE_STAGES.map(stage =>
+            catalog.filter((m: any) => m.age_months > stage.minAge && m.age_months <= stage.maxAge)
+        );
+    }, [catalog]);
+
+    const handleStatus = (milestoneId: string, newStatus: MilestoneStatus) => {
+        const current = statusMap[milestoneId];
+        const status = current === newStatus ? null : newStatus;
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        setMilestoneStatus({ childId, milestoneId, status });
+    };
+
+    if (loadingCatalog || loadingAchieved) {
+        return <ActivityIndicator size="large" color={theme.primary} style={{ marginTop: 40 }} />;
+    }
+
+    const currentItems = stageData[selectedStageIndex] ?? [];
+    const answeredCount = currentItems.filter(m => statusMap[m.id] != null).length;
+    const achievedCount = currentItems.filter(m => statusMap[m.id] === 'achieved').length;
+    const progress = currentItems.length > 0 ? answeredCount / currentItems.length : 0;
+
+    return (
+        <View style={{ width: '100%' }}>
+            {/* Age stage horizontal picker — auto-selects child's current stage */}
+            <BambiniText variant="caption" weight="bold" color={theme.textSecondary} style={styles.stageSectionLabel}>
+                {childDob ? `YOUR CHILD IS ${ageMonths} MONTHS OLD` : 'BROWSE BY AGE'}
+            </BambiniText>
+            <ScrollView
+                horizontal showsHorizontalScrollIndicator={false}
+                style={{ marginBottom: 20 }}
+                contentContainerStyle={{ paddingHorizontal: 2, gap: 8 }}
+            >
+                {AGE_STAGES.map((stage, i) => {
+                    const isActive = i === selectedStageIndex;
+                    const stageItems = stageData[i];
+                    const stageAnswered = stageItems.filter(m => statusMap[m.id] != null).length;
+                    const stageDone = stageItems.length > 0 && stageAnswered === stageItems.length;
+                    const stageProgress = stageItems.length > 0 ? stageAnswered / stageItems.length : 0;
+                    // Mini ring SVG params
+                    const ringSize = 20;
+                    const ringStroke = 3;
+                    const ringRadius = (ringSize - ringStroke) / 2;
+                    const ringCirc = 2 * Math.PI * ringRadius;
+                    const ringOffset = ringCirc * (1 - stageProgress);
+                    return (
+                        <TouchableOpacity
+                            key={stage.label}
+                            onPress={() => {
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                setSelectedStageIndex(i);
+                            }}
+                            style={[
+                                styles.stageChip,
+                                {
+                                    backgroundColor: isActive ? theme.primary : theme.surface,
+                                    borderColor: isActive ? theme.primary : (stageDone ? '#22C55E' : theme.border),
+                                    borderWidth: stageDone && !isActive ? 2 : 1,
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    gap: 5,
+                                },
+                            ]}
+                        >
+                            {/* Mini progress ring */}
+                            {stageItems.length > 0 && (
+                                <Svg width={ringSize} height={ringSize} style={{ transform: [{ rotate: '-90deg' }] }}>
+                                    <SvgCircle
+                                        cx={ringSize / 2}
+                                        cy={ringSize / 2}
+                                        r={ringRadius}
+                                        stroke={isActive ? 'rgba(255,255,255,0.3)' : theme.border}
+                                        strokeWidth={ringStroke}
+                                        fill="none"
+                                    />
+                                    {stageProgress > 0 && (
+                                        <SvgCircle
+                                            cx={ringSize / 2}
+                                            cy={ringSize / 2}
+                                            r={ringRadius}
+                                            stroke={isActive ? '#FFFFFF' : (stageDone ? '#22C55E' : '#F5A623')}
+                                            strokeWidth={ringStroke}
+                                            fill="none"
+                                            strokeDasharray={`${ringCirc}`}
+                                            strokeDashoffset={ringOffset}
+                                            strokeLinecap="round"
+                                        />
+                                    )}
+                                </Svg>
+                            )}
+                            <BambiniText
+                                variant="caption"
+                                weight={isActive ? 'bold' : 'medium'}
+                                color={isActive ? '#FFFFFF' : (stageDone ? '#22C55E' : theme.text)}
+                                style={{ fontSize: 12 }}
+                            >
+                                {stage.shortLabel}
+                            </BambiniText>
+                        </TouchableOpacity>
+                    );
+                })}
+            </ScrollView>
+
+            {/* Stage summary card */}
+            <View style={[styles.stageSummaryCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <View style={{ flex: 1 }}>
+                        <BambiniText variant="h3" weight="bold" color={theme.text}>
+                            {AGE_STAGES[selectedStageIndex].label}
+                        </BambiniText>
+                        <BambiniText variant="caption" color={theme.textSecondary} style={{ marginTop: 3 }}>
+                            {currentItems.length} milestones · {answeredCount} answered · {achievedCount} achieved
+                        </BambiniText>
+                    </View>
+                    <View style={[styles.progressCircleOuter, { borderColor: theme.border }]}>
+                        <BambiniText variant="caption" weight="bold" color={theme.primary} style={{ fontSize: 13 }}>
+                            {Math.round(progress * 100)}%
+                        </BambiniText>
+                    </View>
+                </View>
+                <View style={[styles.progressTrack, { backgroundColor: theme.border, marginTop: 12 }]}>
+                    <View style={[styles.progressFill, { width: `${progress * 100}%` as any, backgroundColor: theme.primary }]} />
+                </View>
+                <BambiniText variant="caption" color={theme.textSecondary} style={{ marginTop: 8, fontStyle: 'italic' }}>
+                    💡 Tap each milestone to record how well your child can do it
+                </BambiniText>
+            </View>
+
+            {/* Milestone cards — grouped by domain */}
+            {currentItems.length === 0 ? (
+                <View style={styles.emptyState}>
+                    <BambiniText variant="body" color={theme.textSecondary}>
+                        No milestones for this stage. Try running the SQL migration.
+                    </BambiniText>
+                </View>
+            ) : (
+                <DomainAccordion
+                    items={currentItems}
+                    statusMap={statusMap}
+                    handleStatus={handleStatus}
+                    theme={theme}
+                />
+            )}
+        </View>
+    );
+}
+
+// ─── Domain Accordion ────────────────────────────────────────────────────────
+
+function DomainAccordion({
+    items,
+    statusMap,
+    handleStatus,
+    theme,
+}: {
+    items: any[];
+    statusMap: Record<string, MilestoneStatus>;
+    handleStatus: (milestoneId: string, newStatus: MilestoneStatus) => void;
+    theme: any;
+}) {
+    // Group items by domain, preserving insertion order
+    const grouped = useMemo(() => {
+        const map = new Map<string, any[]>();
+        items.forEach(item => {
+            const key = (item.domain ?? 'Other').toLowerCase();
+            if (!map.has(key)) map.set(key, []);
+            map.get(key)!.push(item);
+        });
+        return Array.from(map.entries()); // [domainKey, items[]]
+    }, [items]);
+
+    // Track which domains are expanded (first one open by default)
+    const [expanded, setExpanded] = useState<Record<string, boolean>>(() => {
+        const init: Record<string, boolean> = {};
+        grouped.forEach(([key], i) => { init[key] = i === 0; });
+        return init;
+    });
+
+    const toggle = useCallback((key: string) => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        setExpanded(prev => ({ ...prev, [key]: !prev[key] }));
+    }, []);
+
+    return (
+        <View>
+            {grouped.map(([domainKey, domainItems]) => {
+                const isOpen = expanded[domainKey] ?? false;
+                const domainColor = getDomainColor(domainKey);
+                const emoji = getDomainEmoji(domainKey);
+                const answeredCount = domainItems.filter((m: any) => statusMap[m.id] != null).length;
+                const achievedCount = domainItems.filter((m: any) => statusMap[m.id] === 'achieved').length;
+                const domainLabel = domainKey.charAt(0).toUpperCase() + domainKey.slice(1);
+
+                return (
+                    <View key={domainKey} style={{ marginBottom: 12 }}>
+                        {/* Accordion header */}
+                        <TouchableOpacity
+                            onPress={() => toggle(domainKey)}
+                            activeOpacity={0.7}
+                            style={[
+                                styles.accordionHeader,
+                                {
+                                    backgroundColor: theme.surface,
+                                    borderColor: isOpen ? domainColor : theme.border,
+                                    borderLeftColor: domainColor,
+                                    borderLeftWidth: 4,
+                                },
+                            ]}
+                        >
+                            <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                                <BambiniText variant="body" style={{ fontSize: 20, marginRight: 10 }}>
+                                    {emoji}
+                                </BambiniText>
+                                <View style={{ flex: 1 }}>
+                                    <BambiniText variant="body" weight="bold" color={theme.text}>
+                                        {domainLabel}
+                                    </BambiniText>
+                                    <BambiniText variant="caption" color={theme.textSecondary} style={{ marginTop: 2 }}>
+                                        {achievedCount}/{domainItems.length} achieved · {answeredCount} answered
+                                    </BambiniText>
+                                </View>
+                            </View>
+                            {/* Chevron */}
+                            <BambiniText variant="body" color={theme.textSecondary} style={{ fontSize: 18 }}>
+                                {isOpen ? '▾' : '▸'}
+                            </BambiniText>
+                        </TouchableOpacity>
+
+                        {/* Collapsible content */}
+                        {isOpen && (
+                            <View style={styles.accordionBody}>
+                                {domainItems.map((item: any) => (
+                                    <AnimatedMilestoneCard
+                                        key={item.id}
+                                        item={item}
+                                        currentStatus={statusMap[item.id]}
+                                        domainColor={domainColor}
+                                        handleStatus={handleStatus}
+                                        theme={theme}
+                                    />
+                                ))}
+                            </View>
+                        )}
+                    </View>
+                );
+            })}
+        </View>
+    );
+}
+
+// ─── Animated Milestone Card ─────────────────────────────────────────────────
+
+function AnimatedMilestoneCard({
+    item,
+    currentStatus,
+    domainColor,
+    handleStatus,
+    theme,
+}: {
+    item: any;
+    currentStatus: MilestoneStatus | undefined;
+    domainColor: string;
+    handleStatus: (milestoneId: string, newStatus: MilestoneStatus) => void;
+    theme: any;
+}) {
+    const pulseAnim = useRef(new Animated.Value(1)).current;
+    const glowAnim = useRef(new Animated.Value(0)).current;
+    const [showSparkle, setShowSparkle] = useState(false);
+    const prevStatusRef = useRef(currentStatus);
+
+    // Achievement celebration pulse
+    useEffect(() => {
+        if (currentStatus === 'achieved' && prevStatusRef.current !== 'achieved') {
+            setShowSparkle(true);
+            Animated.sequence([
+                Animated.timing(pulseAnim, { toValue: 1.03, duration: 150, useNativeDriver: true }),
+                Animated.timing(pulseAnim, { toValue: 0.97, duration: 100, useNativeDriver: true }),
+                Animated.timing(pulseAnim, { toValue: 1.0, duration: 120, useNativeDriver: true }),
+            ]).start();
+            setTimeout(() => setShowSparkle(false), 1500);
+        }
+        prevStatusRef.current = currentStatus;
+    }, [currentStatus]);
+
+    // Unanswered glow: subtle pulsing border opacity
+    useEffect(() => {
+        if (!currentStatus) {
+            Animated.loop(
+                Animated.sequence([
+                    Animated.timing(glowAnim, { toValue: 1, duration: 1800, useNativeDriver: false }),
+                    Animated.timing(glowAnim, { toValue: 0, duration: 1800, useNativeDriver: false }),
+                ])
+            ).start();
+        } else {
+            glowAnim.stopAnimation();
+            glowAnim.setValue(0);
+        }
+    }, [currentStatus]);
+
+    const isUnanswered = !currentStatus;
+    const borderColor = currentStatus === 'achieved'
+        ? '#22C55E'
+        : currentStatus === 'emerging'
+            ? '#F5A623'
+            : theme.border;
+
+    // Interpolate glow for unanswered cards
+    const glowBorderColor = glowAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: [theme.border, '#F5A62380'],
+    });
+
+    const cardBorderColor = isUnanswered ? glowBorderColor : borderColor;
+    const cardBg = currentStatus === 'achieved' ? '#F0FFF4' : theme.surface;
+
+    return (
+        <Animated.View
+            style={[
+                styles.milestoneCard,
+                {
+                    backgroundColor: cardBg,
+                    borderColor: cardBorderColor,
+                    borderLeftColor: domainColor,
+                    borderLeftWidth: 4,
+                    transform: [{ scale: pulseAnim }],
+                },
+            ]}
+        >
+            {/* Achievement sparkle overlay */}
+            {showSparkle && (
+                <View style={styles.sparkleOverlay}>
+                    <BambiniText variant="h3" style={{ fontSize: 24 }}>✨</BambiniText>
+                </View>
+            )}
+
+            {/* Title + age range */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <BambiniText variant="body" weight="semibold" color={theme.text} style={{ flex: 1, fontSize: 15 }}>
+                    {currentStatus === 'achieved' ? '✅ ' : ''}{item.title}
+                </BambiniText>
+                {item.age_min_months != null && (
+                    <BambiniText variant="caption" color={theme.textSecondary} style={{ fontSize: 10, marginLeft: 8 }}>
+                        {item.age_min_months}–{item.age_max_months}m
+                    </BambiniText>
+                )}
+            </View>
+
+            {/* Description */}
+            <BambiniText variant="caption" color={theme.textSecondary} style={{ lineHeight: 19, marginBottom: 10 }}>
+                {item.description}
+            </BambiniText>
+
+            {/* Mascot tip speech bubble */}
+            {item.tip && (
+                <View style={styles.mascotTipContainer}>
+                    <View style={styles.mascotAvatar}>
+                        <BambiniText variant="body" style={{ fontSize: 18 }}>
+                            {TIP_MASCOTS[item.id.charCodeAt(0) % TIP_MASCOTS.length]}
+                        </BambiniText>
+                    </View>
+                    <View style={styles.speechBubble}>
+                        <View style={styles.speechPointer} />
+                        <BambiniText variant="caption" color="#5B4A1E" style={{ lineHeight: 17, fontStyle: 'italic' }}>
+                            {item.tip}
+                        </BambiniText>
+                    </View>
+                </View>
+            )}
+
+            {/* Unanswered nudge */}
+            {isUnanswered && (
+                <View style={styles.nudgeBanner}>
+                    <BambiniText variant="caption" color="#B45309" style={{ fontSize: 11 }}>
+                        👋 Can your child do this?
+                    </BambiniText>
+                </View>
+            )}
+
+            {/* 3-button feedback */}
+            <View style={styles.feedbackRow}>
+                {STATUS_OPTIONS.map((opt) => {
+                    const isSelected = currentStatus === opt.value;
+                    return (
+                        <TouchableOpacity
+                            key={opt.value}
+                            onPress={() => handleStatus(item.id, opt.value)}
+                            activeOpacity={0.75}
+                            style={[
+                                styles.feedbackBtn,
+                                {
+                                    backgroundColor: isSelected ? opt.color : '#f9f5ea',
+                                    borderColor: isSelected ? opt.color : theme.border,
+                                },
+                            ]}
+                        >
+                            <BambiniText
+                                variant="caption"
+                                weight={isSelected ? 'bold' : 'medium'}
+                                color={isSelected ? '#FFFFFF' : theme.textSecondary}
+                                style={{ fontSize: 12 }}
+                            >
+                                {opt.label}
+                            </BambiniText>
+                        </TouchableOpacity>
+                    );
+                })}
+            </View>
+        </Animated.View>
+    );
+}
+
+// ─── Styles ──────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        paddingHorizontal: 20,
-    },
+    container: { flex: 1, paddingHorizontal: 20 },
     header: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
         marginTop: 60,
-        marginBottom: 24,
+        marginBottom: 20,
     },
-    headerAvatarBorder: {
-        borderWidth: 2,
-        borderRadius: 25,
-        padding: 2,
+    childChip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        borderRadius: 24,
+        borderWidth: 1,
     },
     tabContainer: {
         flexDirection: 'row',
-        backgroundColor: '#F3EFE6', // slightly darker tan for the inactive area
-        borderRadius: 25,
+        borderRadius: 24,
         borderWidth: 1,
-        borderColor: '#3DBBB8',
-        overflow: 'hidden',
-        marginBottom: 32,
+        padding: 4,
+        marginBottom: 28,
     },
     tabSegment: {
         flex: 1,
-        paddingVertical: 12,
+        paddingVertical: 10,
         alignItems: 'center',
         justifyContent: 'center',
+        borderRadius: 20,
     },
-    chartSection: {
-        alignItems: 'center',
+    emptyState: { marginTop: 40, alignItems: 'center', padding: 32 },
+    // Overview
+    summaryCard: {
+        borderRadius: 16, borderWidth: 1,
+        padding: 20, marginBottom: 24,
     },
     chartWrapper: {
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginBottom: 32,
+        alignItems: 'center', justifyContent: 'center',
+        borderRadius: 16, borderWidth: 1,
+        paddingVertical: 16, marginBottom: 24,
     },
-    legendContainer: {
-        width: '100%',
-        marginBottom: 32,
-        paddingHorizontal: 10,
-    },
-    legendRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-around',
-        marginBottom: 12,
+    legendGrid: {
+        flexDirection: 'row', flexWrap: 'wrap',
+        gap: 10, marginBottom: 24,
     },
     legendItem: {
+        width: '47%', borderRadius: 12,
+        borderWidth: 1, padding: 12,
+    },
+    legendDot: { width: 10, height: 10, borderRadius: 5 },
+    progressTrack: { height: 6, borderRadius: 3, overflow: 'hidden' },
+    progressFill: { height: '100%', borderRadius: 3 },
+    // Milestones age-stage
+    stageSectionLabel: {
+        marginBottom: 10,
+        letterSpacing: 0.8,
+    },
+    stageChip: {
+        paddingHorizontal: 14,
+        paddingVertical: 8,
+        borderRadius: 20,
+        borderWidth: 1,
+    },
+    stageSummaryCard: {
+        borderRadius: 16,
+        borderWidth: 1,
+        padding: 18,
+        marginBottom: 24,
+    },
+    progressCircleOuter: {
+        width: 52,
+        height: 52,
+        borderRadius: 26,
+        borderWidth: 2,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginLeft: 12,
+    },
+    // Legacy / shared
+    filterPill: {
+        paddingHorizontal: 14, paddingVertical: 7,
+        borderRadius: 20, borderWidth: 1,
+    },
+    instructionBox: {
+        borderRadius: 12, borderWidth: 1,
+        padding: 12, marginBottom: 24,
+    },
+    milestonesGroupHeader: {
+        flexDirection: 'row', justifyContent: 'space-between',
+        alignItems: 'flex-start', marginBottom: 10,
+    },
+    milestoneCard: {
+        padding: 16, borderRadius: 16, marginBottom: 14,
+        borderWidth: 1.5,
+        shadowColor: '#1A1A1A', shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.04, shadowRadius: 4, elevation: 1,
+    },
+    domainPill: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6 },
+    tipBox: {
+        borderRadius: 10, borderWidth: 1,
+        paddingHorizontal: 12, paddingVertical: 8,
+        marginBottom: 12,
+    },
+    feedbackRow: { flexDirection: 'row', gap: 8, marginTop: 4 },
+    feedbackBtn: {
+        flex: 1, paddingVertical: 10, borderRadius: 10,
+        borderWidth: 1.5, alignItems: 'center', justifyContent: 'center',
+    },
+    // Accordion
+    accordionHeader: {
         flexDirection: 'row',
         alignItems: 'center',
-    },
-    legendDot: {
-        width: 10,
-        height: 10,
-        borderRadius: 5,
-        marginRight: 6,
-    },
-    summaryCard: {
-        backgroundColor: '#FFFFFF',
-        borderRadius: 16,
-        padding: 20,
-        width: '100%',
-        shadowColor: '#1A1A1A',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 8,
-        elevation: 2,
+        justifyContent: 'space-between',
+        padding: 14,
+        borderRadius: 14,
         borderWidth: 1,
-        borderColor: '#E8F1F5',
-    }
+        shadowColor: '#1A1A1A',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.04,
+        shadowRadius: 3,
+        elevation: 1,
+    },
+    accordionBody: {
+        paddingTop: 8,
+        paddingLeft: 4,
+    },
+    sparkleOverlay: {
+        position: 'absolute',
+        top: 8,
+        right: 12,
+        zIndex: 10,
+    },
+    nudgeBanner: {
+        backgroundColor: '#FEF3C7',
+        borderRadius: 8,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        marginBottom: 10,
+        alignSelf: 'flex-start',
+    },
+    // Mascot tip speech bubble
+    mascotTipContainer: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        marginBottom: 12,
+        gap: 8,
+    },
+    mascotAvatar: {
+        width: 34,
+        height: 34,
+        borderRadius: 17,
+        backgroundColor: '#FEF3C7',
+        alignItems: 'center',
+        justifyContent: 'center',
+        shadowColor: '#F59E0B',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.15,
+        shadowRadius: 3,
+        elevation: 2,
+    },
+    speechBubble: {
+        flex: 1,
+        backgroundColor: '#FFFDF5',
+        borderRadius: 12,
+        padding: 10,
+        borderWidth: 1,
+        borderColor: '#FDE68A',
+        position: 'relative',
+    },
+    speechPointer: {
+        position: 'absolute',
+        left: -6,
+        top: 10,
+        width: 0,
+        height: 0,
+        borderTopWidth: 6,
+        borderBottomWidth: 6,
+        borderRightWidth: 6,
+        borderTopColor: 'transparent',
+        borderBottomColor: 'transparent',
+        borderRightColor: '#FDE68A',
+    },
 });
+
