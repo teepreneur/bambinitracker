@@ -6,6 +6,7 @@ import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
 import { useChildren, useProfile } from '@/hooks/useData';
 import { supabase } from '@/lib/supabase';
+import { getChildAgeShort } from '@/utils/childAge';
 import { useRouter } from 'expo-router';
 import {
     Bell, ChevronRight, Edit3,
@@ -59,17 +60,7 @@ export default function ProfileScreen() {
         );
     };
 
-    const getChildAge = (dob: string) => {
-        const dobDate = new Date(dob);
-        const today = new Date();
-        const diffMs = today.getTime() - dobDate.getTime();
-        const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-        if (days < 30) return `${days} days`;
-        const months = Math.floor(days / 30.4375);
-        if (months < 24) return `${months} mo`;
-        const years = Math.floor(months / 12);
-        return `${years} yr${years > 1 ? 's' : ''}`;
-    };
+    // getChildAge is now imported as getChildAgeShort from '@/utils/childAge'
 
     return (
         <ScrollView
@@ -138,7 +129,7 @@ export default function ProfileScreen() {
                                 {child.name}
                             </BambiniText>
                             <BambiniText variant="caption" color="#8E8E93" style={{ marginTop: 2 }}>
-                                {child.dob ? getChildAge(child.dob) : '—'}
+                                {child.dob ? getChildAgeShort(child.dob) : '—'}
                             </BambiniText>
                             <View style={styles.editBadge}>
                                 <Edit3 color="#26B8B8" size={12} />

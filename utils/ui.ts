@@ -44,28 +44,41 @@ export const getActivityEmoji = (title: string): string => {
     return '🌟';
 };
 
-export const getDomainColor = (domain: string) => {
-    switch (domain?.toLowerCase()) {
-        case 'cognitive': return '#A67BB5'; // Purple
-        case 'gross motor': return '#8DC63F'; // Green
-        case 'fine motor': return '#3B82F6'; // Blue
-        case 'sensory': return '#EC4899'; // Pink
-        case 'language': return '#F5A623'; // Orange
-        case 'social': return '#4ECDC4'; // Turquoise
-        case 'creative': return '#FFD166'; // Yellow/Gold
-        default: return '#A67BB5';
-    }
+// ─── Centralized Domain Configuration ────────────────────────────────────────
+// Single source of truth for domain keys, labels, colors, and emojis.
+// Import this everywhere instead of duplicating domain lists.
+
+export interface DomainConfig {
+    key: string;      // Lowercase DB key, e.g. 'cognitive'
+    label: string;    // Display label, e.g. 'Cognitive'
+    color: string;    // Brand color hex
+    emoji: string;    // Representative emoji
+}
+
+export const DOMAIN_CONFIG: DomainConfig[] = [
+    { key: 'cognitive', label: 'Cognitive', color: '#A67BB5', emoji: '🧠' },
+    { key: 'gross motor', label: 'Gross Motor', color: '#8DC63F', emoji: '💪' },
+    { key: 'fine motor', label: 'Fine Motor', color: '#3B82F6', emoji: '✋' },
+    { key: 'language', label: 'Language', color: '#F5A623', emoji: '🗣️' },
+    { key: 'social', label: 'Social', color: '#4ECDC4', emoji: '🤝' },
+    { key: 'creative', label: 'Creative', color: '#FFD166', emoji: '🎨' },
+    { key: 'sensory', label: 'Sensory', color: '#EC4899', emoji: '👁️' },
+];
+
+/** Domain labels array (for filter pills, etc.) */
+export const DOMAINS = DOMAIN_CONFIG.map(d => d.label);
+
+/** Get color for a domain key or label */
+export const getDomainColor = (domain: string): string => {
+    const d = DOMAIN_CONFIG.find(c => c.key === domain?.toLowerCase() || c.label === domain);
+    return d?.color ?? '#A67BB5';
 };
 
-export const DOMAINS = [
-    'Cognitive',
-    'Gross Motor',
-    'Fine Motor',
-    'Language',
-    'Social',
-    'Creative',
-    'Sensory'
-];
+/** Get emoji for a domain key or label */
+export const getDomainEmoji = (domain: string): string => {
+    const d = DOMAIN_CONFIG.find(c => c.key === domain?.toLowerCase() || c.label === domain);
+    return d?.emoji ?? '📌';
+};
 
 export const getDynamicGreeting = (): string => {
     const hour = new Date().getHours();

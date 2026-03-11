@@ -46,12 +46,72 @@ export function useChildren() {
     });
 }
 
-// Fetch basic observations (mocked for now until we build the Timeline)
+// Fetch observations for the current user's children
 export function useUserObservations() {
     return useQuery({
         queryKey: ['observations'],
         queryFn: async () => {
-            return [];
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) return [];
+
+            // Get all child IDs for this parent
+            const { data: links } = await supabase
+                .from('parent_children')
+                .select('child_id')
+                .eq('parent_id', user.id);
+
+            if (!links || links.length === 0) return [];
+
+            const childIds = links.map(l => l.child_id);
+
+            // Fetch observations for these children
+            const { data: observations, error } = await supabase
+                .from('observations')
+                .select('*')
+                .in('child_id', childIds)
+                .order('created_at', { ascending: false })
+                .limit(200);
+
+            if (error) {
+                console.error('[useUserObservations] Error:', error);
+                return [];
+            }
+
+            return observations || [];
+        },
+    });
+}
+
+// Hardcoded fallback tips (used if the `tips` table doesn't exist yet)
+const FALLBACK_NEWBORN_TIPS = [
+    { id: 'fb-1', title: 'Safe Sleep', content: 'Always place baby on their back on a firm, flat infant sleep surface.', icon: '🌙', color: '#A67BB5', bg_color: '#F4EBf7', age_min_days: 0, age_max_days: 90 },
+    { id: 'fb-2', title: 'Postpartum Help', content: 'Remember to rest when baby rests. Your gentle recovery is vital.', icon: '🤍', color: '#EC4899', bg_color: '#FCE7F3', age_min_days: 0, age_max_days: 90 },
+    { id: 'fb-3', title: 'Tummy Time', content: 'Start with 2-3 minutes of tummy time on your chest, 2-3 times a day.', icon: '🧸', color: '#F5A623', bg_color: '#FFF5E6', age_min_days: 0, age_max_days: 90 },
+];
+
+// Fetch tips from DB with fallback to hardcoded if table doesn't exist
+export function useNewbornTips(ageDays: number) {
+    return useQuery({
+        queryKey: ['tips', ageDays],
+        queryFn: async () => {
+            try {
+                const { data, error } = await supabase
+                    .from('tips')
+                    .select('*')
+                    .lte('age_min_days', ageDays)
+                    .gte('age_max_days', ageDays)
+                    .order('created_at', { ascending: false });
+
+                if (error) {
+                    // Table probably doesn't exist yet — use fallback
+                    console.log('[useNewbornTips] Tips table not available, using fallback');
+                    return FALLBACK_NEWBORN_TIPS;
+                }
+
+                return data && data.length > 0 ? data : FALLBACK_NEWBORN_TIPS;
+            } catch {
+                return FALLBACK_NEWBORN_TIPS;
+            }
         },
     });
 }

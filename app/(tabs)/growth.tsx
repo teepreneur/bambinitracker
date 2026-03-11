@@ -9,6 +9,8 @@ import {
     useMilestonesCatalog,
     useToggleChildMilestone,
 } from '@/hooks/useData';
+import { getAgeInMonths } from '@/utils/childAge';
+import { DOMAIN_CONFIG, getDomainColor, getDomainEmoji } from '@/utils/ui';
 import * as Haptics from 'expo-haptics';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -27,20 +29,9 @@ const CHART_SIZE = width * 0.78;
 const CENTER = CHART_SIZE / 2;
 const RADIUS = CHART_SIZE * 0.36;
 
-const RADAR_DOMAINS = [
-    { key: 'cognitive', label: 'Cognitive', color: '#A67BB5' },
-    { key: 'gross motor', label: 'Gross Motor', color: '#8DC63F' },
-    { key: 'fine motor', label: 'Fine Motor', color: '#3B82F6' },
-    { key: 'language', label: 'Language', color: '#F5A623' },
-    { key: 'social', label: 'Social', color: '#4ECDC4' },
-    { key: 'creative', label: 'Creative', color: '#FFD166' },
-    { key: 'sensory', label: 'Sensory', color: '#EC4899' },
-];
+// Use centralized DOMAIN_CONFIG from utils/ui.ts for the radar chart
+const RADAR_DOMAINS = DOMAIN_CONFIG;
 
-function getDomainColor(domain: string): string {
-    const d = RADAR_DOMAINS.find(r => r.key === domain?.toLowerCase());
-    return d?.color ?? '#A67BB5';
-}
 
 /** Convert a MilestoneStatus to a numeric score for the radar */
 function statusScore(status: MilestoneStatus | undefined): number {
@@ -294,32 +285,13 @@ const AGE_STAGES = [
     { label: '5–6 yrs', shortLabel: '5–6y', minAge: 60, maxAge: 73 },
 ];
 
-// ─── Domain display helpers ──────────────────────────────────────────────────
-
-const DOMAIN_EMOJIS: Record<string, string> = {
-    'cognitive': '🧠',
-    'gross motor': '💪',
-    'fine motor': '✋',
-    'language': '🗣️',
-    'social': '🤝',
-    'creative': '🎨',
-    'sensory': '👁️',
-};
-
-function getDomainEmoji(domain: string): string {
-    return DOMAIN_EMOJIS[domain?.toLowerCase()] ?? '📌';
-}
+// getDomainEmoji is now imported from '@/utils/ui'
 
 const TIP_MASCOTS = ['🦥', '🧸', '🐣', '🌟', '🐰', '🦉', '🐝', '🧑‍🍳'];
 
 // ─── Milestones Tab ───────────────────────────────────────────────────────────
 
-function getAgeInMonths(dob: string | undefined): number {
-    if (!dob) return 0;
-    const birth = new Date(dob);
-    const now = new Date();
-    return (now.getFullYear() - birth.getFullYear()) * 12 + (now.getMonth() - birth.getMonth());
-}
+// getAgeInMonths is now imported from '@/utils/childAge'
 
 function getDefaultStageIndex(ageMonths: number): number {
     for (let i = AGE_STAGES.length - 1; i >= 0; i--) {

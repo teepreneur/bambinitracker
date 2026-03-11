@@ -4,8 +4,9 @@ import { BambiniText } from '@/components/design-system/BambiniText';
 import { ChildAvatar } from '@/components/design-system/ChildAvatar';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
-import { useChildActivities, useChildren, useProfile, useUserObservations } from '@/hooks/useData';
-import { getActivityEmoji, getDomainColor } from '@/utils/ui';
+import { useChildActivities, useChildren, useNewbornTips, useProfile, useUserObservations } from '@/hooks/useData';
+import { isNewborn as checkIsNewborn, getAgeBreakdown, getChildAgeLabel, getStageLabel } from '@/utils/childAge';
+import { getActivityEmoji, getDomainColor, getDynamicGreeting } from '@/utils/ui';
 import { useRouter } from 'expo-router';
 import { CheckCircle2, ChevronRight, Palette, Plus } from 'lucide-react-native';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -50,18 +51,10 @@ export default function HomeScreen() {
     }
   }, [children]);
 
-  const ageDays = useMemo(() => {
-    if (!selectedChild?.dob) return 0;
-    const dob = new Date(selectedChild.dob);
-    // Ensure we count time based on local timezone start of days
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    dob.setHours(0, 0, 0, 0);
-    const diff = today.getTime() - dob.getTime();
-    return Math.max(0, Math.floor(diff / (1000 * 60 * 60 * 24)));
-  }, [selectedChild]);
-
-  const ageMonths = Math.floor(ageDays / 30.4375);
+  const { days: ageDays, months: ageMonths } = useMemo(
+    () => getAgeBreakdown(selectedChild?.dob),
+    [selectedChild]
+  );
 
   const { data: todayActivities = [], isLoading: loadingActivities } = useChildActivities(
     selectedChild?.id,
@@ -74,53 +67,10 @@ export default function HomeScreen() {
   const completionPercent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
 
   // --- Newborn Logic ---
-  const isNewborn = ageDays < 25;
+  const isNewborn = checkIsNewborn(selectedChild?.dob);
 
-  const getChildAgeLabel = (dob: string) => {
-    const birth = new Date(dob);
-    const now = new Date();
-    const diffDays = Math.floor((now.getTime() - birth.getTime()) / (1000 * 60 * 60 * 24));
-
-    if (diffDays < 7) return `${diffDays} days old`;
-    if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks old`;
-    if (diffDays < 365) return `${Math.floor(diffDays / 30.4375)} months old`;
-    return `${Math.floor(diffDays / 365)} years old`;
-  };
-
-  const NEWBORN_TIPS = [
-    {
-      id: '1',
-      title: 'Safe Sleep',
-      content: 'Always place baby on their back on a firm, flat infant sleep surface.',
-      icon: '🌙',
-      color: '#A67BB5',
-      bgColor: '#F4EBf7'
-    },
-    {
-      id: '2',
-      title: 'Postpartum Help',
-      content: 'Remember to rest when baby rests. Your gentle recovery is vital.',
-      icon: '🤍',
-      color: '#EC4899',
-      bgColor: '#FCE7F3'
-    },
-    {
-      id: '3',
-      title: 'Tummy Time',
-      content: 'Start with 2-3 minutes of tummy time on your chest, 2-3 times a day.',
-      icon: '🧸',
-      color: '#F5A623',
-      bgColor: '#FFF5E6'
-    }
-  ];
-
-  // --- Dynamic Greeting ---
-  const getGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return 'Good morning,';
-    if (hour < 17) return 'Good afternoon,';
-    return 'Good evening,';
-  };
+  // --- Tips from DB (with fallback) ---
+  const { data: tips = [] } = useNewbornTips(ageDays);
 
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#f9f5ea' }}>
@@ -133,7 +83,7 @@ export default function HomeScreen() {
         <View style={styles.header}>
           <View>
             <BambiniText variant="body" color={theme.textSecondary}>
-              {isNewborn ? "Congratulations," : getGreeting()}
+              {isNewborn ? "Congratulations," : getDynamicGreeting()}
             </BambiniText>
             <BambiniText variant="h1" weight="bold">{userName.split(' ')[0]} 👋</BambiniText>
           </View>
@@ -226,10 +176,10 @@ export default function HomeScreen() {
                       {selectedChild.name} —
                     </BambiniText>
                     <BambiniText variant="h1" color="#FFFFFF" weight="bold" style={{ fontSize: 28, marginBottom: 2 }}>
-                      {isNewborn ? 'Newborn stage' : ageMonths < 12 ? 'Infant Phase' : ageMonths < 36 ? 'Toddler Stage' : 'Preschooler'}
+                      {getStageLabel(selectedChild?.dob)}
                     </BambiniText>
                     <BambiniText variant="caption" color="rgba(255,255,255,0.8)">
-                      ({isNewborn ? `${ageDays} days old` : ageMonths < 12 ? `${ageMonths} months` : ageMonths < 36 ? '18-24 months' : '36-48 months'})
+                      ({getChildAgeLabel(selectedChild?.dob)})
                     </BambiniText>
                   </View>
 
@@ -292,14 +242,14 @@ export default function HomeScreen() {
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={styles.tipsScroll}
                 >
-                  {NEWBORN_TIPS.map(tip => (
+                  {tips.map((tip: any) => (
                     <BambiniCard
                       key={tip.id}
                       style={[
                         styles.tipCard,
                         {
                           backgroundColor: '#FFFFFF',
-                          borderColor: tip.color + '40', // slightly visible border
+                          borderColor: tip.color + '40',
                           borderWidth: 1.5,
                           shadowColor: tip.color,
                           shadowOffset: { width: 0, height: 4 },
@@ -310,7 +260,7 @@ export default function HomeScreen() {
                       ]}
                       variant="elevated"
                     >
-                      <View style={[styles.tipIconContainer, { backgroundColor: tip.bgColor }]}>
+                      <View style={[styles.tipIconContainer, { backgroundColor: tip.bg_color || tip.bgColor || '#F4EBf7' }]}>
                         <BambiniText style={{ fontSize: 24 }}>{tip.icon}</BambiniText>
                       </View>
                       <BambiniText variant="h2" weight="bold" color={tip.color} style={{ marginTop: 16 }}>{tip.title}</BambiniText>
