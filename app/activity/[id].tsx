@@ -1,3 +1,4 @@
+import { ActivityFeedbackModal } from '@/components/ActivityFeedbackModal';
 import { BambiniCard } from '@/components/design-system/BambiniCard';
 import { BambiniSkeleton } from '@/components/design-system/BambiniSkeleton';
 import { BambiniText } from '@/components/design-system/BambiniText';
@@ -53,23 +54,25 @@ export default function ActivityDetailScreen() {
 
     const completeActivity = useCompleteActivity();
     const [justCompleted, setJustCompleted] = useState(false);
+    const [modalVisible, setModalVisible] = useState(false);
 
-    const handleComplete = () => {
+    const handleOpenModal = () => {
         if (!childId || !id) {
             Alert.alert("Error", "Missing child or activity information.");
             return;
         }
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        setModalVisible(true);
+    };
 
-        // Give immediate tactile feedback that the button was pressed
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-
+    const handleFeedbackSubmit = (rating: string, note: string, mediaUrls: string[]) => {
         completeActivity.mutate(
-            { childId: childId as string, activityId: id as string },
+            { childId: childId as string, activityId: id as string, rating, note, mediaUrls },
             {
                 onSuccess: () => {
-                    // Premium tactile feedback for success
                     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                     setJustCompleted(true);
+                    setModalVisible(false);
                     queryClient.invalidateQueries({ queryKey: ['activity_completed', id, childId] });
                 },
                 onError: (err) => {
@@ -123,19 +126,21 @@ export default function ActivityDetailScreen() {
                 {/* Hero Header - White Card with Shadow */}
                 <View style={[styles.heroHeader, {
                     shadowColor: domainColor,
-                    shadowOffset: { width: 0, height: 8 },
-                    shadowOpacity: 0.1,
-                    shadowRadius: 24,
+                    shadowOffset: { width: 0, height: 12 },
+                    shadowOpacity: 0.15,
+                    shadowRadius: 32,
                     elevation: 10,
                 }]}>
                     <TouchableOpacity style={styles.backButtonFloating} onPress={() => router.back()}>
                         <ChevronLeft color="#1A1A1A" size={28} />
                     </TouchableOpacity>
 
+                    {/* Massive Immersive Emoji Container */}
                     <View style={styles.emojiContainer}>
-                        <View style={[styles.emojiBackgroundRing, { backgroundColor: domainColor + '10' }]} />
-                        <View style={[styles.emojiBackgroundRing, { backgroundColor: domainColor + '20', width: 140, height: 140, position: 'absolute' }]} />
-                        <BambiniText style={{ fontSize: 80, zIndex: 10 }}>{emoji}</BambiniText>
+                        <View style={[styles.emojiBackgroundRingLarge, { backgroundColor: domainColor + '08' }]} />
+                        <View style={[styles.emojiBackgroundRingMedium, { backgroundColor: domainColor + '15' }]} />
+                        <View style={[styles.emojiBackgroundRingSmall, { backgroundColor: domainColor + '25' }]} />
+                        <BambiniText style={styles.immersiveEmoji}>{emoji}</BambiniText>
                     </View>
 
                     <BambiniText variant="h1" weight="bold" style={{ fontSize: 28, color: '#1A1A1A', textAlign: 'center', marginTop: 16 }}>
@@ -270,13 +275,12 @@ export default function ActivityDetailScreen() {
                 <View style={styles.floatingButtonContainer}>
                     <TouchableOpacity
                         style={[styles.completeButton, { backgroundColor: domainColor }]}
-                        onPress={handleComplete}
-                        disabled={completeActivity.isPending}
+                        onPress={handleOpenModal}
                         activeOpacity={0.8}
                     >
                         <CheckCircle2 color="#FFFFFF" size={24} />
                         <BambiniText variant="h3" weight="bold" color="#FFFFFF" style={{ marginLeft: 12 }}>
-                            {completeActivity.isPending ? 'Saving...' : 'Mark as Complete 🎉'}
+                            Mark as Complete 🎉
                         </BambiniText>
                     </TouchableOpacity>
                 </View>
@@ -290,6 +294,13 @@ export default function ActivityDetailScreen() {
                     </View>
                 </View>
             )}
+
+            <ActivityFeedbackModal
+                visible={modalVisible}
+                onClose={() => setModalVisible(false)}
+                onSubmit={handleFeedbackSubmit}
+                isSubmitting={completeActivity.isPending}
+            />
         </View>
     );
 }
@@ -301,27 +312,49 @@ const styles = StyleSheet.create({
     heroHeader: {
         width: '100%',
         backgroundColor: '#FFFFFF',
-        borderBottomLeftRadius: 40,
-        borderBottomRightRadius: 40,
-        paddingTop: 100,
-        paddingBottom: 32,
+        borderBottomLeftRadius: 48,
+        borderBottomRightRadius: 48,
+        paddingTop: 80,
+        paddingBottom: 40,
         paddingHorizontal: 24,
         alignItems: 'center',
         zIndex: 10,
+        overflow: 'hidden', // Contain the large decorative rings
     },
     emojiContainer: {
-        width: 160,
-        height: 160,
+        width: 220,
+        height: 220,
         alignItems: 'center',
         justifyContent: 'center',
         position: 'relative',
-        marginBottom: 8,
+        marginBottom: 20,
+        marginTop: 20,
     },
-    emojiBackgroundRing: {
-        width: 120,
-        height: 120,
+    emojiBackgroundRingLarge: {
+        width: 280,
+        height: 280,
+        borderRadius: 140,
+        position: 'absolute',
+    },
+    emojiBackgroundRingMedium: {
+        width: 200,
+        height: 200,
         borderRadius: 100,
         position: 'absolute',
+    },
+    emojiBackgroundRingSmall: {
+        width: 140,
+        height: 140,
+        borderRadius: 70,
+        position: 'absolute',
+    },
+    immersiveEmoji: {
+        fontSize: 100,
+        zIndex: 10,
+        includeFontPadding: false,
+        textShadowColor: 'rgba(0,0,0,0.1)',
+        textShadowOffset: { width: 0, height: 4 },
+        textShadowRadius: 8,
     },
     domainBadgeHeader: {
         paddingHorizontal: 16,

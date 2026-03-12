@@ -11,6 +11,8 @@ import { useRouter } from 'expo-router';
 import { CheckCircle2, ChevronRight, Palette, Plus } from 'lucide-react-native';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  AppState,
+  AppStateStatus,
   ScrollView,
   StyleSheet,
   Text,
@@ -27,6 +29,8 @@ export default function HomeScreen() {
 
   // --- State ---
   const [selectedChildId, setSelectedChildId] = useState<string | null>(null);
+  const [showCompletedList, setShowCompletedList] = useState(false);
+  const [currentDate, setCurrentDate] = useState(() => new Date().toISOString().split('T')[0]);
 
   // --- Hooks ---
   const { data: profile } = useProfile();
@@ -51,6 +55,40 @@ export default function HomeScreen() {
     }
   }, [children]);
 
+  // Reset completion toggle when child changes
+  useEffect(() => {
+    setShowCompletedList(false);
+  }, [selectedChildId]);
+
+  // Listen for date changes (when app comes to foreground or midnight passes)
+  useEffect(() => {
+    const handleAppStateChange = (nextAppState: AppStateStatus) => {
+      if (nextAppState === 'active') {
+        const today = new Date().toISOString().split('T')[0];
+        if (today !== currentDate) {
+          console.log(`[HomeScreen] Date changed from ${currentDate} to ${today}. Rolling over.`);
+          setCurrentDate(today);
+        }
+      }
+    };
+
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+
+    // Also check periodically in case they keep the app open actively through midnight
+    const interval = setInterval(() => {
+      const today = new Date().toISOString().split('T')[0];
+      if (today !== currentDate) {
+        console.log(`[HomeScreen] Midnight passed while app active! Rolling over.`);
+        setCurrentDate(today);
+      }
+    }, 60000); // check every minute
+
+    return () => {
+      subscription.remove();
+      clearInterval(interval);
+    };
+  }, [currentDate]);
+
   const { days: ageDays, months: ageMonths } = useMemo(
     () => getAgeBreakdown(selectedChild?.dob),
     [selectedChild]
@@ -58,8 +96,13 @@ export default function HomeScreen() {
 
   const { data: todayActivities = [], isLoading: loadingActivities } = useChildActivities(
     selectedChild?.id,
-    ageDays
+    ageDays,
+    currentDate
   );
+
+  const allActivitiesDone = useMemo(() => {
+    return todayActivities.length > 0 && todayActivities.every((a: any) => a.isCompleted);
+  }, [todayActivities]);
 
   // --- Progress Calculation ---
   const completedCount = todayActivities.filter((a: any) => a.isCompleted).length;
@@ -291,101 +334,130 @@ export default function HomeScreen() {
                   <View style={styles.emptyState}>
                     <Palette color={theme.tabIconDefault} size={64} style={{ opacity: 0.3 }} />
                     <BambiniText variant="body" color={theme.textSecondary} style={{ textAlign: 'center', marginTop: 16 }}>
-                      All activities completed for today! Great job!
+                      No activities generated yet.
                     </BambiniText>
                   </View>
+                ) : allActivitiesDone && !showCompletedList ? (
+                  <View style={[styles.allDoneCard, { borderColor: '#8DC63F' }]}>
+                    <View style={styles.allDoneIconContainer}>
+                      <Text style={{ fontSize: 54, includeFontPadding: false }}>🎉</Text>
+                    </View>
+                    <BambiniText variant="h2" weight="bold" color="#2E7D32" style={{ textAlign: 'center', marginTop: 16 }}>
+                      All caught up for today!
+                    </BambiniText>
+                    <BambiniText variant="body" color="#4CAF50" style={{ textAlign: 'center', marginTop: 8, marginBottom: 24, paddingHorizontal: 12, lineHeight: 22 }}>
+                      You've completed all activities for {selectedChild?.name}. Thank you for intentionally nurturing their growth today!
+                    </BambiniText>
+                    <TouchableOpacity
+                      style={styles.viewCompletedButton}
+                      onPress={() => setShowCompletedList(true)}
+                      activeOpacity={0.8}
+                    >
+                      <BambiniText variant="body" weight="bold" color="#FFFFFF">Review Activities</BambiniText>
+                    </TouchableOpacity>
+                  </View>
                 ) : (
-                  todayActivities.map((activity: any, index: number) => {
-                    const dColor = getDomainColor(activity.domain);
-                    const bgColor = dColor + '12';
-                    const isComplete = activity.isCompleted;
+                  <>
+                    {allActivitiesDone && showCompletedList && (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, paddingHorizontal: 4 }}>
+                        <BambiniText variant="body" weight="bold" color="#4CAF50">✨ All activities completed!</BambiniText>
+                        <TouchableOpacity onPress={() => setShowCompletedList(false)}>
+                          <BambiniText variant="caption" weight="bold" color={theme.textSecondary}>Hide</BambiniText>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                    {todayActivities.map((activity: any, index: number) => {
+                      const dColor = getDomainColor(activity.domain);
+                      const bgColor = dColor + '12';
+                      const isComplete = activity.isCompleted;
 
-                    return (
-                      <TouchableOpacity
-                        key={activity.id}
-                        activeOpacity={0.85}
-                        style={[
-                          styles.activityCard,
-                          {
-                            backgroundColor: isComplete ? '#F0F0F0' : bgColor,
-                            borderColor: isComplete ? '#E0E0E0' : dColor + '30',
-                            borderLeftWidth: 4,
-                            borderLeftColor: isComplete ? '#8DC63F' : dColor,
-                          }
-                        ]}
-                        onPress={() => router.push({
-                          pathname: '/activity/[id]',
-                          params: { id: activity.id, childId: selectedChild?.id }
-                        })}
-                      >
-                        {/* Top Row: Emoji + Title + Duration */}
-                        <View style={styles.activityRow}>
-                          {/* Large Emoji Bubble */}
-                          <View style={[
-                            styles.emojiCircle,
-                            { backgroundColor: isComplete ? '#E8F5E9' : dColor + '20' }
-                          ]}>
-                            {isComplete ? (
-                              <CheckCircle2 color="#4CAF50" size={22} />
-                            ) : (
-                              <Text style={{ fontSize: 22, lineHeight: 28, textAlign: 'center' }}>
-                                {getActivityEmoji(activity.title)}
-                              </Text>
+                      return (
+                        <TouchableOpacity
+                          key={activity.id}
+                          activeOpacity={0.85}
+                          style={[
+                            styles.activityCard,
+                            {
+                              backgroundColor: isComplete ? '#F0F0F0' : bgColor,
+                              borderColor: isComplete ? '#E0E0E0' : dColor + '30',
+                              borderLeftWidth: 4,
+                              borderLeftColor: isComplete ? '#8DC63F' : dColor,
+                            }
+                          ]}
+                          onPress={() => router.push({
+                            pathname: '/activity/[id]',
+                            params: { id: activity.id, childId: selectedChild?.id }
+                          })}
+                        >
+                          {/* Top Row: Emoji + Title + Duration */}
+                          <View style={styles.activityRow}>
+                            {/* Large Emoji Bubble */}
+                            <View style={[
+                              styles.emojiCircle,
+                              { backgroundColor: isComplete ? '#E8F5E9' : dColor + '20' }
+                            ]}>
+                              {isComplete ? (
+                                <CheckCircle2 color="#4CAF50" size={22} />
+                              ) : (
+                                <Text style={{ fontSize: 24, includeFontPadding: false }}>
+                                  {getActivityEmoji(activity.title)}
+                                </Text>
+                              )}
+                            </View>
+
+                            {/* Title + Description */}
+                            <View style={styles.activityInfo}>
+                              <BambiniText
+                                variant="body"
+                                weight="bold"
+                                color={isComplete ? '#9E9E9E' : '#1A1A1A'}
+                                style={[
+                                  { fontSize: 16, lineHeight: 22 },
+                                  isComplete && { textDecorationLine: 'line-through' }
+                                ]}
+                                numberOfLines={2}
+                              >
+                                {activity.title}
+                              </BambiniText>
+
+                              {/* Domain + Time Pills */}
+                              <View style={styles.cardPillRow}>
+                                <View style={[styles.domainPill, { backgroundColor: isComplete ? '#E0E0E0' : dColor + '18' }]}>
+                                  <View style={[styles.tinyDot, { backgroundColor: isComplete ? '#9E9E9E' : dColor }]} />
+                                  <BambiniText
+                                    variant="caption"
+                                    weight="bold"
+                                    color={isComplete ? '#9E9E9E' : dColor}
+                                    style={{ fontSize: 11 }}
+                                  >
+                                    {activity.domain}
+                                  </BambiniText>
+                                </View>
+                                <View style={[styles.timePill, { backgroundColor: isComplete ? '#E0E0E0' : '#FFF8E1' }]}>
+                                  <BambiniText style={{ fontSize: 10 }}>⏱</BambiniText>
+                                  <BambiniText
+                                    variant="caption"
+                                    weight="medium"
+                                    color={isComplete ? '#9E9E9E' : '#F5A623'}
+                                    style={{ fontSize: 11, marginLeft: 3 }}
+                                  >
+                                    {activity.estimated_duration_minutes || 10} min
+                                  </BambiniText>
+                                </View>
+                              </View>
+                            </View>
+
+                            {/* Right Arrow / Completed State */}
+                            {!isComplete && (
+                              <View style={[styles.goButton, { backgroundColor: dColor }]}>
+                                <ChevronRight color="#FFFFFF" size={20} />
+                              </View>
                             )}
                           </View>
-
-                          {/* Title + Description */}
-                          <View style={styles.activityInfo}>
-                            <BambiniText
-                              variant="body"
-                              weight="bold"
-                              color={isComplete ? '#9E9E9E' : '#1A1A1A'}
-                              style={[
-                                { fontSize: 16, lineHeight: 22 },
-                                isComplete && { textDecorationLine: 'line-through' }
-                              ]}
-                              numberOfLines={2}
-                            >
-                              {activity.title}
-                            </BambiniText>
-
-                            {/* Domain + Time Pills */}
-                            <View style={styles.cardPillRow}>
-                              <View style={[styles.domainPill, { backgroundColor: isComplete ? '#E0E0E0' : dColor + '18' }]}>
-                                <View style={[styles.tinyDot, { backgroundColor: isComplete ? '#9E9E9E' : dColor }]} />
-                                <BambiniText
-                                  variant="caption"
-                                  weight="bold"
-                                  color={isComplete ? '#9E9E9E' : dColor}
-                                  style={{ fontSize: 11 }}
-                                >
-                                  {activity.domain}
-                                </BambiniText>
-                              </View>
-                              <View style={[styles.timePill, { backgroundColor: isComplete ? '#E0E0E0' : '#FFF8E1' }]}>
-                                <BambiniText style={{ fontSize: 10 }}>⏱</BambiniText>
-                                <BambiniText
-                                  variant="caption"
-                                  weight="medium"
-                                  color={isComplete ? '#9E9E9E' : '#F5A623'}
-                                  style={{ fontSize: 11, marginLeft: 3 }}
-                                >
-                                  {activity.estimated_duration_minutes || 10} min
-                                </BambiniText>
-                              </View>
-                            </View>
-                          </View>
-
-                          {/* Right Arrow / Completed State */}
-                          {!isComplete && (
-                            <View style={[styles.goButton, { backgroundColor: dColor }]}>
-                              <ChevronRight color="#FFFFFF" size={20} />
-                            </View>
-                          )}
-                        </View>
-                      </TouchableOpacity>
-                    );
-                  })
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </>
                 )}
               </View>
             )}
@@ -599,6 +671,45 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 4,
     elevation: 3,
+  },
+  allDoneCard: {
+    backgroundColor: '#F1F8E9',
+    borderRadius: 24,
+    borderWidth: 2,
+    padding: 24,
+    marginBottom: 24,
+    alignItems: 'center',
+    shadowColor: '#8DC63F',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  allDoneIconContainer: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: '#E8F5E9',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 2,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  viewCompletedButton: {
+    backgroundColor: '#4CAF50',
+    paddingVertical: 14,
+    paddingHorizontal: 32,
+    borderRadius: 20,
+    shadowColor: '#4CAF50',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
   playButtonIcon: {
     width: 44,

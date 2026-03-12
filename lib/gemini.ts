@@ -17,7 +17,19 @@ export interface GeneratedActivity {
     target_age_months: number;
 }
 
-export async function generateActivities(ageDays: number, count: number = 5): Promise<GeneratedActivity[]> {
+// Define recent feedback structure
+export interface RecentFeedback {
+    title: string;
+    rating: string;
+    note: string;
+}
+
+export async function generateActivities(
+    ageDays: number,
+    count: number = 5,
+    recentFeedback: RecentFeedback[] = [],
+    existingTitles: string[] = []
+): Promise<GeneratedActivity[]> {
     if (!apiKey) {
         throw new Error("Gemini API key is missing. Please set EXPO_PUBLIC_GEMINI_API_KEY in your .env file.");
     }
@@ -37,16 +49,44 @@ export async function generateActivities(ageDays: number, count: number = 5): Pr
         ageContext = `${years} years old (Preschooler phase). Focus on complex play, emotional regulation, advanced coordination, and early learning concepts.`;
     }
 
+    let feedbackContext = "";
+    if (recentFeedback && recentFeedback.length > 0) {
+        const feedbackStrings = recentFeedback.map(f =>
+            `- Activity: "${f.title}", Rating: ${f.rating}, Notes: "${f.note}"`
+        ).join('\n');
+
+        feedbackContext = `
+RECENT FEEDBACK FROM PARENTS:
+The parent recently provided the following feedback on activities the child completed:
+${feedbackStrings}
+
+Please use this feedback to adjust your recommendations. For example, if an activity was "Too hard", suggest slightly simpler ones. If the parent noted the child enjoyed something specific, provide more activities in that vein.
+`;
+    }
+
+    let existingContext = "";
+    if (existingTitles && existingTitles.length > 0) {
+        existingContext = `
+IMPORTANT RULES TO AVOID DUPLICATES:
+The child already has the following activities assigned for today:
+${existingTitles.map(t => `- "${t}"`).join('\n')}
+
+You MUST NOT generate any activities with these exact titles, and you MUST NOT generate activities that are highly similar conceptually to these existing ones.
+`;
+    }
+
     const prompt = `
 You are an expert pediatric occupational therapist and early childhood development specialist. 
 Your task is to perfectly tailor a set of daily developmental activities for a child who is exactly ${ageContext}
+${feedbackContext}
+${existingContext}
 
 Generate exactly ${count} highly engaging activities.
 
 Each activity must have:
-1. "title": A short, catchy, engaging title (max 5 words).
+1. "title": A short, catchy, engaging title (max 5 words). MUST BE UNIQUE. Do not generate two activities with the same or highly similar titles.
 2. "description": A clear, concise 2-3 sentence instruction for the parent on exactly what to do and what development it aids.
-3. "domain": Must be exactly one of "Cognitive", "Motor", "Language", "Social", or "Sensory".
+3. "domain": Must be exactly one of "Cognitive", "Motor", "Language", "Social", or "Sensory". Try to provide a mix of domains.
 4. "estimated_time": A short string like "5 min", "10 min", "15 min" etc.
 5. "target_age_months": Approximate target age in months (use 0 for newborns).
 

@@ -5,9 +5,10 @@ import Colors from '@/constants/Colors';
 import {
     MilestoneStatus,
     useChildMilestones,
+    useChildObservations,
     useChildren,
     useMilestonesCatalog,
-    useToggleChildMilestone,
+    useToggleChildMilestone
 } from '@/hooks/useData';
 import { getAgeInMonths } from '@/utils/childAge';
 import { DOMAIN_CONFIG, getDomainColor, getDomainEmoji } from '@/utils/ui';
@@ -51,7 +52,7 @@ function radarCoord(value: number, index: number, total: number) {
 export default function GrowthScreen() {
     const colorScheme = useColorScheme();
     const theme = Colors[colorScheme === 'dark' ? 'dark' : 'light'];
-    const [activeTab, setActiveTab] = useState<'Overview' | 'Milestones'>('Overview');
+    const [activeTab, setActiveTab] = useState<'Overview' | 'Milestones' | 'Timeline'>('Overview');
     const [selectedChildIndex, setSelectedChildIndex] = useState(0);
 
     const { data: children, isLoading: loadingChildren } = useChildren();
@@ -119,7 +120,7 @@ export default function GrowthScreen() {
 
             {/* Tab Switcher */}
             <View style={[styles.tabContainer, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-                {(['Overview', 'Milestones'] as const).map((tab) => {
+                {(['Overview', 'Milestones', 'Timeline'] as const).map((tab) => {
                     const isActive = activeTab === tab;
                     return (
                         <TouchableOpacity
@@ -151,8 +152,10 @@ export default function GrowthScreen() {
                 </View>
             ) : activeTab === 'Overview' ? (
                 <OverviewTab childId={child.id} childName={child.name} theme={theme} />
-            ) : (
+            ) : activeTab === 'Milestones' ? (
                 <MilestonesTab childId={child.id} childDob={child.dob} theme={theme} />
+            ) : (
+                <TimelineTab childId={child.id} childName={child.name} theme={theme} />
             )}
         </ScrollView>
     );
@@ -163,6 +166,11 @@ export default function GrowthScreen() {
 function OverviewTab({ childId, childName, theme }: { childId: string; childName: string; theme: any }) {
     const { data: catalog } = useMilestonesCatalog();
     const { data: achievedMilestones, isLoading } = useChildMilestones(childId);
+    const { data: observations } = useChildObservations(childId);
+    const { mutate: toggleMilestone } = useToggleChildMilestone();
+
+    // Local state to hide prompts that the user dismissed during this session
+    const [hiddenPrompts, setHiddenPrompts] = useState<Record<string, boolean>>({});
 
     // Build a map: milestone_id → status
     const statusMap = useMemo(() => {
@@ -195,8 +203,83 @@ function OverviewTab({ childId, childName, theme }: { childId: string; childName
         RADAR_DOMAINS.map((_, i) => radarCoord(pct, i, RADAR_DOMAINS.length)).map(p => `${p.x},${p.y}`).join(' ')
     );
 
+    // Smart Prompt: Recommend the next milestone from the highest played domain
+    const smartPromptData = useMemo(() => {
+        if (!observations || observations.length === 0 || !catalog) return null;
+
+        // Tally up completed domains
+        const domainCounts: Record<string, number> = {};
+        observations.forEach((obs: any) => {
+            const domain = obs.activities?.domain;
+            if (domain) {
+                domainCounts[domain] = (domainCounts[domain] || 0) + 1;
+            }
+        });
+
+        if (Object.keys(domainCounts).length === 0) return null;
+
+        // Find the domain with the most completed activities
+        const topDomain = Object.keys(domainCounts).reduce((a, b) => domainCounts[a] > domainCounts[b] ? a : b);
+
+        // Filter catalog for that domain, and remove achieved milestones OR locally hidden ones
+        const availableMilestones = catalog.filter((m: any) => {
+            if (m.domain?.toLowerCase() !== topDomain.toLowerCase()) return false;
+            return statusMap[m.id] !== 'achieved' && !hiddenPrompts[m.id];
+        });
+
+        if (availableMilestones.length === 0) return null;
+
+        return {
+            domain: topDomain,
+            count: domainCounts[topDomain],
+            milestone: availableMilestones[0]
+        };
+    }, [observations, catalog, statusMap, hiddenPrompts]);
+
     return (
         <View>
+            {/* Smart Milestone Prompt */}
+            {smartPromptData && (
+                <View style={[styles.nudgeBanner, { backgroundColor: `${getDomainColor(smartPromptData.domain)}15`, borderWidth: 1, borderColor: `${getDomainColor(smartPromptData.domain)}40`, marginBottom: 16, width: '100%' }]}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+                        <BambiniText variant="caption" weight="bold" color={getDomainColor(smartPromptData.domain)}>
+                            💡 Smart Observation Prompt
+                        </BambiniText>
+                    </View>
+                    <BambiniText variant="body" color={theme.text}>
+                        {childName} has completed {smartPromptData.count} <BambiniText variant="body" weight="bold" color={getDomainColor(smartPromptData.domain)}>{getDomainEmoji(smartPromptData.domain)} {smartPromptData.domain}</BambiniText> activities recently! Is {childName} showing signs of:
+                    </BambiniText>
+                    <View style={{ backgroundColor: '#ffffffaa', padding: 10, borderRadius: 8, marginVertical: 10, borderWidth: 1, borderColor: '#0000000a' }}>
+                        <BambiniText variant="body" weight="medium" color={theme.text} style={{ fontStyle: 'italic' }}>
+                            "{smartPromptData.milestone.title}"
+                        </BambiniText>
+                    </View>
+                    <View style={{ flexDirection: 'row', gap: 10 }}>
+                        <TouchableOpacity
+                            style={[styles.stageChip, { flex: 1, backgroundColor: getDomainColor(smartPromptData.domain), borderColor: getDomainColor(smartPromptData.domain), alignItems: 'center' }]}
+                            onPress={() => {
+                                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                                toggleMilestone({
+                                    childId,
+                                    milestoneId: smartPromptData.milestone.id,
+                                    status: 'achieved'
+                                });
+                            }}
+                        >
+                            <BambiniText variant="caption" weight="bold" color="#FFFFFF">Yes, Mastered!</BambiniText>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[styles.stageChip, { flex: 1, backgroundColor: `${getDomainColor(smartPromptData.domain)}15`, borderColor: getDomainColor(smartPromptData.domain), alignItems: 'center' }]}
+                            onPress={() => {
+                                setHiddenPrompts(prev => ({ ...prev, [smartPromptData.milestone.id]: true }));
+                            }}
+                        >
+                            <BambiniText variant="caption" weight="bold" color={getDomainColor(smartPromptData.domain)}>Not Yet</BambiniText>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            )}
+
             {/* Summary Card */}
             <View style={[styles.summaryCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
                 <BambiniText variant="h3" weight="bold" color={theme.text}>
@@ -923,4 +1006,99 @@ const styles = StyleSheet.create({
         borderRightColor: '#FDE68A',
     },
 });
+
+// ─── Timeline Tab ─────────────────────────────────────────────────────────────
+
+function TimelineTab({ childId, childName, theme }: { childId: string; childName: string; theme: any }) {
+    const { data: observations, isLoading } = useChildObservations(childId);
+
+    const groupedObservations = useMemo(() => {
+        if (!observations) return {};
+        const groups: Record<string, any[]> = {};
+        observations.forEach((obs: any) => {
+            const dateStr = new Date(obs.created_at).toLocaleDateString('en-US', {
+                weekday: 'short', month: 'short', day: 'numeric', year: 'numeric'
+            });
+            if (!groups[dateStr]) groups[dateStr] = [];
+            groups[dateStr].push(obs);
+        });
+        return groups;
+    }, [observations]);
+
+    if (isLoading) {
+        return <ActivityIndicator size="large" color={theme.primary} style={{ marginTop: 40 }} />;
+    }
+
+    if (!observations || observations.length === 0) {
+        return (
+            <View style={{ padding: 24, alignItems: 'center', marginTop: 40 }}>
+                <BambiniText variant="body" color={theme.textSecondary} style={{ textAlign: 'center' }}>
+                    No activities completed yet. Whenever {childName} finishes an activity, it will show up here in their timeline!
+                </BambiniText>
+            </View>
+        );
+    }
+
+    return (
+        <View style={{ paddingHorizontal: 16, paddingTop: 16 }}>
+            {Object.entries(groupedObservations).map(([dateLabel, obsList]) => (
+                <View key={dateLabel} style={{ marginBottom: 24 }}>
+                    <BambiniText variant="caption" weight="bold" color={theme.textSecondary} style={{ marginBottom: 12, textTransform: 'uppercase', letterSpacing: 1, paddingLeft: 4 }}>
+                        {dateLabel}
+                    </BambiniText>
+                    {obsList.map((obs: any, index: number) => {
+                        const act = obs.activities;
+                        if (!act) return null;
+                        const domainColor = getDomainColor(act.domain);
+                        const emoji = getDomainEmoji(act.domain);
+
+                        return (
+                            <View key={obs.id} style={{ flexDirection: 'row', marginBottom: 16 }}>
+                                {/* Timeline Line & Dot */}
+                                <View style={{ alignItems: 'center', marginRight: 12, width: 24 }}>
+                                    <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: domainColor, zIndex: 1 }} />
+                                    {index !== obsList.length - 1 && (
+                                        <View style={{ width: 2, flex: 1, backgroundColor: theme.border, marginTop: -4, marginBottom: -20, zIndex: 0 }} />
+                                    )}
+                                </View>
+
+                                {/* Content Card */}
+                                <View style={[styles.milestoneCard, { flex: 1, backgroundColor: theme.surface, borderColor: theme.border, marginTop: -4 }]}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                                        <View style={{ flex: 1, paddingRight: 12 }}>
+                                            <BambiniText variant="h3" weight="bold" color={theme.text}>
+                                                {act.title}
+                                            </BambiniText>
+
+                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+                                                <View style={[styles.domainPill, { backgroundColor: `${domainColor}15` }]}>
+                                                    <BambiniText variant="caption" weight="bold" color={domainColor}>
+                                                        {emoji} {act.domain}
+                                                    </BambiniText>
+                                                </View>
+                                                {obs.rating && obs.rating !== 'completed' && (
+                                                    <View style={[styles.domainPill, { backgroundColor: theme.border }]}>
+                                                        <BambiniText variant="caption" color={theme.textSecondary}>
+                                                            {obs.rating === 'loved_it' ? '✨ Loved it' : obs.rating === 'just_okay' ? '👍 Just okay' : '💪 Too hard'}
+                                                        </BambiniText>
+                                                    </View>
+                                                )}
+                                            </View>
+
+                                            {obs.note ? (
+                                                <BambiniText variant="body" color={theme.textSecondary} style={{ marginTop: 10, fontStyle: 'italic' }}>
+                                                    "{obs.note}"
+                                                </BambiniText>
+                                            ) : null}
+                                        </View>
+                                    </View>
+                                </View>
+                            </View>
+                        );
+                    })}
+                </View>
+            ))}
+        </View>
+    );
+}
 

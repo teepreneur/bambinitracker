@@ -135,13 +135,13 @@ export function useActivitiesLibrary() {
     });
 }
 
-// Fetch activities assigned to a specific child, cross-referenced with observations for completion
-export function useChildActivities(childId?: string, ageDays?: number) {
+// Fetch activities assigned to a specific child, implementing daily rollover and top-off logic
+export function useChildActivities(childId?: string, ageDays?: number, currentDate?: string) {
     return useQuery({
-        queryKey: ['child_activities', childId, 'v4'],
-        enabled: !!childId,
+        queryKey: ['child_activities', childId, currentDate, 'v5'],
+        enabled: !!childId && !!currentDate,
         queryFn: async () => {
-            console.log(`[useChildActivities] Hook Fired! childId: ${childId}, ageDays: ${ageDays}`);
+            console.log(`[useChildActivities] Fired! childId: ${childId}, ageDays: ${ageDays}, date: ${currentDate}`);
 
             // 1. Fetch activities assigned to this child
             const { data: existingActivities, error: fetchError } = await supabase
@@ -171,107 +171,154 @@ export function useChildActivities(childId?: string, ageDays?: number) {
 
             console.log(`[useChildActivities] Found ${existingActivities?.length || 0} existing activities, ${completedActivityIds.size} completed.`);
 
-            // 3. If we have enough activities (at least 3), return them (cap at 5)
-            if (existingActivities && existingActivities.length >= 3) {
-                console.log("[useChildActivities] Returning existing activities directly.");
-                return existingActivities.slice(0, 5).map((ca: any) => ({
-                    ...ca.activities,
-                    id: ca.activities.id,
-                    assignment_id: ca.id,
-                    isCompleted: completedActivityIds.has(ca.activity_id),
-                }));
-            }
+            // 3. Categorize Assignments
+            const todayAssignments = existingActivities.filter(a => a.assigned_at?.startsWith(currentDate!));
+            const pastAssignments = existingActivities.filter(a => !a.assigned_at?.startsWith(currentDate!));
 
-            // 4. Otherwise, generate new activities via Gemini AI
-            console.log("[useChildActivities] Generating new batch via Gemini API...");
-            try {
-                const count = (ageDays || 0) < 25 ? 4 : 5;
-                const newGenerated = await generateActivities(ageDays || 0, count);
-                console.log(`[useChildActivities] Gemini successfully returned ${newGenerated.length} activities.`);
+            const completedToday = todayAssignments.filter(a => completedActivityIds.has(a.activity_id));
+            const incompleteToday = todayAssignments.filter(a => !completedActivityIds.has(a.activity_id));
+            const pastIncomplete = pastAssignments.filter(a => !completedActivityIds.has(a.activity_id));
 
-                if (newGenerated.length === 0) {
-                    return existingActivities ? existingActivities.map((ca: any) => ({
-                        ...ca.activities, id: ca.activities.id, assignment_id: ca.id, isCompleted: completedActivityIds.has(ca.activity_id)
-                    })) : [];
-                }
+            let finalActivitiesForToday = [...completedToday, ...incompleteToday];
+            let slotsNeeded = 5 - finalActivitiesForToday.length;
 
-                // 5. Insert the newly generated activities into the `activities` catalog
-                const currentAgeDays = ageDays || 0;
-                let ageBand = '0-3 months';
-                if (currentAgeDays < 90) ageBand = '0-3 months';
-                else if (currentAgeDays < 180) ageBand = '3-6 months';
-                else if (currentAgeDays < 365) ageBand = '6-12 months';
-                else if (currentAgeDays < 730) ageBand = '12-24 months';
-                else if (currentAgeDays < 1095) ageBand = '24-36 months';
-                else ageBand = '36-48 months';
+            console.log(`[useChildActivities] Today has ${finalActivitiesForToday.length} acts. Slots needed: ${slotsNeeded}. Past incomplete available: ${pastIncomplete.length}`);
 
-                const activitiesToInsert = newGenerated.map(a => ({
-                    title: a.title,
-                    description: a.description,
-                    domain: a.domain,
-                    min_age_months: Math.max(0, a.target_age_months - 1),
-                    max_age_months: a.target_age_months + 1,
-                    estimated_duration_minutes: parseInt(a.estimated_time) || 10,
-                    age_band: ageBand,
-                    difficulty_level: 'easy',
-                }));
+            // 4. ROLLOVER LOGIC
+            if (slotsNeeded > 0 && pastIncomplete.length > 0) {
+                const toRollOver = pastIncomplete.slice(0, slotsNeeded);
+                console.log(`[useChildActivities] Rolling over ${toRollOver.length} past activities to today.`);
 
-                const { data: insertedActivities, error: insertError } = await supabase
-                    .from('activities')
-                    .insert(activitiesToInsert)
-                    .select();
-
-                if (insertError) {
-                    console.error("[useChildActivities] Failed to insert activities:", insertError);
-                    throw insertError;
-                }
-
-                // 6. Assign these new activities to the child
-                const assignmentsToInsert = insertedActivities.map(a => ({
-                    child_id: childId,
-                    activity_id: a.id,
-                    assigned_at: new Date().toISOString()
-                }));
-
-                const { data: insertedAssignments, error: assignError } = await supabase
+                const { error: rollError } = await supabase
                     .from('child_activities')
-                    .insert(assignmentsToInsert)
-                    .select();
+                    .update({ assigned_at: new Date().toISOString() })
+                    .in('id', toRollOver.map(a => a.id));
 
-                if (assignError) {
-                    console.error("[useChildActivities] Failed to assign activities:", assignError);
-                    throw assignError;
+                if (rollError) {
+                    console.error("[useChildActivities] Failed to auto-rollover:", rollError);
+                } else {
+                    finalActivitiesForToday = [...finalActivitiesForToday, ...toRollOver];
+                    slotsNeeded -= toRollOver.length;
+
+                    // We invalidate the cache to trigger a clean refetch 
+                    // (though optimistic update here works too)
                 }
-
-                // 7. Combine and return
-                const newlyFormatted = insertedAssignments.map((ca: any) => {
-                    const act = insertedActivities.find(a => a.id === ca.activity_id);
-                    return { ...act, id: act.id, assignment_id: ca.id, isCompleted: false };
-                });
-
-                const existingFormatted = (existingActivities || []).map((ca: any) => ({
-                    ...ca.activities, id: ca.activities.id, assignment_id: ca.id,
-                    isCompleted: completedActivityIds.has(ca.activity_id)
-                }));
-
-                return [...existingFormatted, ...newlyFormatted];
-            } catch (err: any) {
-                console.error("Hook catch block caught error:", err);
-                Alert.alert("Activity Error", err.message || "Failed to generate activities.");
-                return existingActivities ? existingActivities.map((ca: any) => ({
-                    ...ca.activities, id: ca.activities.id, assignment_id: ca.id, isCompleted: false
-                })) : [];
             }
+
+            // 5. TOP-OFF LOGIC
+            if (slotsNeeded > 0) {
+                console.log(`[useChildActivities] Generating ${slotsNeeded} fresh activities via Gemini...`);
+                try {
+                    // Fetch recent feedback to guide the AI
+                    const { data: recentObs } = await supabase
+                        .from('observations')
+                        .select(`rating, note, activities(title)`)
+                        .eq('child_id', childId)
+                        .not('rating', 'is', null)
+                        .order('created_at', { ascending: false })
+                        .limit(5);
+
+                    const recentFeedback = (recentObs || []).map((obs: any) => ({
+                        title: obs.activities?.title || 'Unknown Activity',
+                        rating: obs.rating,
+                        note: obs.note || '',
+                    })).filter(f => f.rating !== 'completed');
+
+                    const existingTitles = finalActivitiesForToday.map((a: any) => a.activities?.title || a.title).filter(Boolean);
+
+                    const newGenerated = await generateActivities(ageDays || 0, slotsNeeded, recentFeedback, existingTitles);
+                    console.log(`[useChildActivities] Gemini successfully returned ${newGenerated.length} activities.`);
+
+                    if (newGenerated.length > 0) {
+                        // Insert the newly generated activities into the `activities` catalog
+                        const currentAgeDays = ageDays || 0;
+                        let ageBand = '0-3 months';
+                        if (currentAgeDays < 90) ageBand = '0-3 months';
+                        else if (currentAgeDays < 180) ageBand = '3-6 months';
+                        else if (currentAgeDays < 365) ageBand = '6-12 months';
+                        else if (currentAgeDays < 730) ageBand = '12-24 months';
+                        else if (currentAgeDays < 1095) ageBand = '24-36 months';
+                        else ageBand = '36-48 months';
+
+                        const activitiesToInsert = newGenerated.map(a => ({
+                            title: a.title,
+                            description: a.description,
+                            domain: a.domain,
+                            min_age_months: Math.max(0, a.target_age_months - 1),
+                            max_age_months: a.target_age_months + 1,
+                            estimated_duration_minutes: parseInt(a.estimated_time) || 10,
+                            age_band: ageBand,
+                            difficulty_level: 'easy',
+                        }));
+
+                        const { data: insertedActivities, error: insertError } = await supabase
+                            .from('activities')
+                            .insert(activitiesToInsert)
+                            .select();
+
+                        if (insertError) throw insertError;
+
+                        // Assign these new activities to the child
+                        const assignmentsToInsert = insertedActivities.map(a => ({
+                            child_id: childId,
+                            activity_id: a.id,
+                            assigned_at: new Date().toISOString()
+                        }));
+
+                        const { data: insertedAssignments, error: assignError } = await supabase
+                            .from('child_activities')
+                            .insert(assignmentsToInsert)
+                            .select();
+
+                        if (assignError) throw assignError;
+
+                        // Add to our final pool
+                        const newlyFormatted = insertedAssignments.map((ca: any) => {
+                            const act = insertedActivities.find(a => a.id === ca.activity_id);
+                            return {
+                                id: ca.id,
+                                assigned_at: ca.assigned_at,
+                                activity_id: ca.activity_id,
+                                activities: act
+                            };
+                        });
+                        finalActivitiesForToday = [...finalActivitiesForToday, ...newlyFormatted];
+                    }
+                } catch (err: any) {
+                    console.error("Hook catch block caught error during top-off:", err);
+                    Alert.alert("Activity Error", err.message || "Failed to generate top-off activities.");
+                }
+            }
+
+            // 6. Return Formatting
+            return finalActivitiesForToday.map((ca: any) => ({
+                ...ca.activities,
+                id: ca.activities.id,
+                assignment_id: ca.id,
+                isCompleted: completedActivityIds.has(ca.activity_id)
+            }));
         },
     });
 }
 
-// Mutation: Mark an activity as completed by inserting an observation
+// Mutation: Mark an activity as completed by inserting an observation with optional feedback
 export function useCompleteActivity() {
     const queryClient = useQueryClient();
 
     return useMutation({
-        mutationFn: async ({ childId, activityId }: { childId: string; activityId: string }) => {
+        mutationFn: async ({
+            childId,
+            activityId,
+            rating = 'completed',
+            note = 'Activity completed',
+            mediaUrls = []
+        }: {
+            childId: string;
+            activityId: string;
+            rating?: string;
+            note?: string;
+            mediaUrls?: string[];
+        }) => {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) throw new Error('Not authenticated');
 
@@ -294,19 +341,57 @@ export function useCompleteActivity() {
                     child_id: childId,
                     activity_id: activityId,
                     observer_id: user.id,
-                    rating: 'completed',
-                    note: 'Activity completed',
+                    rating,
+                    note,
+                    media_urls: mediaUrls,
                     location_type: 'home',
                 })
                 .select()
                 .single();
 
-            if (error) throw error;
+            if (error) {
+                console.error("[useCompleteActivity] Insert error:", error);
+                throw error;
+            }
             return data;
         },
         onSuccess: () => {
             // Invalidate activities so the home screen updates
             queryClient.invalidateQueries({ queryKey: ['child_activities'] });
+            queryClient.invalidateQueries({ queryKey: ['observations'] });
+        },
+    });
+}
+
+// Fetch a child's chronological observation history (completed activities)
+export function useChildObservations(childId?: string) {
+    return useQuery({
+        queryKey: ['observations_history', childId],
+        enabled: !!childId,
+        queryFn: async () => {
+            const { data, error } = await supabase
+                .from('observations')
+                .select(`
+                    id,
+                    created_at,
+                    rating,
+                    note,
+                    media_urls,
+                    activities (
+                        id,
+                        title,
+                        domain,
+                        estimated_duration_minutes
+                    )
+                `)
+                .eq('child_id', childId)
+                .order('created_at', { ascending: false });
+
+            if (error) {
+                console.error("[useChildObservations] Fetch error:", error);
+                throw error;
+            }
+            return data;
         },
     });
 }
