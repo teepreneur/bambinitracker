@@ -55,6 +55,7 @@ export default function ActivityDetailScreen() {
     const completeActivity = useCompleteActivity();
     const [justCompleted, setJustCompleted] = useState(false);
     const [modalVisible, setModalVisible] = useState(false);
+    const [isSuccess, setIsSuccess] = useState(false);
 
     const handleOpenModal = () => {
         if (!childId || !id) {
@@ -62,6 +63,7 @@ export default function ActivityDetailScreen() {
             return;
         }
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        setIsSuccess(false);
         setModalVisible(true);
     };
 
@@ -72,7 +74,7 @@ export default function ActivityDetailScreen() {
                 onSuccess: () => {
                     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                     setJustCompleted(true);
-                    setModalVisible(false);
+                    setIsSuccess(true);
                     queryClient.invalidateQueries({ queryKey: ['activity_completed', id, childId] });
                 },
                 onError: (err) => {
@@ -300,6 +302,7 @@ export default function ActivityDetailScreen() {
                 onClose={() => setModalVisible(false)}
                 onSubmit={handleFeedbackSubmit}
                 isSubmitting={completeActivity.isPending}
+                isSuccess={isSuccess}
             />
         </View>
     );

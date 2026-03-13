@@ -1,9 +1,9 @@
-import React from 'react';
 import { Tabs } from 'expo-router';
-import { Home, Compass, BarChart2, MessageCircle, User } from 'lucide-react-native';
+import { Activity, BarChart2, Compass, Home, User } from 'lucide-react-native';
+import React from 'react';
 
-import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
+import Colors from '@/constants/Colors';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
@@ -51,10 +51,10 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="messages"
+        name="health"
         options={{
-          title: 'Messages',
-          tabBarIcon: ({ color }) => <MessageCircle size={24} color={color} />,
+          title: 'Health',
+          tabBarIcon: ({ color }) => <Activity size={24} color={color} />,
         }}
       />
       <Tabs.Screen

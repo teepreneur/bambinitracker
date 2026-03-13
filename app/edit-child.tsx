@@ -5,8 +5,9 @@ import { AVATARS, ChildAvatar } from '@/components/design-system/ChildAvatar';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
 import { useChildren, useDeleteChild, useUpdateChild } from '@/hooks/useData';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ChevronLeft, Trash2 } from 'lucide-react-native';
+import { Calendar, ChevronLeft, Trash2 } from 'lucide-react-native';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 
@@ -28,6 +29,7 @@ export default function EditChildScreen() {
     const [dob, setDob] = useState('');
     const [gender, setGender] = useState('');
     const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+    const [showDatePicker, setShowDatePicker] = useState(false);
 
     useEffect(() => {
         if (child) {
@@ -50,6 +52,16 @@ export default function EditChildScreen() {
         const years = Math.floor(months / 12);
         const remMonths = months % 12;
         return `${years} yr${years > 1 ? 's' : ''}${remMonths > 0 ? ` ${remMonths} mo` : ''} old`;
+    };
+
+    const onChangeDate = (event: any, selectedDate?: Date) => {
+        if (Platform.OS === 'android') {
+            setShowDatePicker(false);
+        }
+        if (selectedDate) {
+            const formattedDate = selectedDate.toISOString().split('T')[0];
+            setDob(formattedDate);
+        }
     };
 
     const handleSave = () => {
@@ -181,12 +193,30 @@ export default function EditChildScreen() {
                         autoCapitalize="words"
                     />
 
-                    <BambiniInput
-                        label="Date of Birth"
-                        placeholder="YYYY-MM-DD"
-                        value={dob}
-                        onChangeText={setDob}
-                    />
+                    <BambiniText variant="label" weight="semibold" style={{ marginBottom: 8, marginLeft: 4, opacity: 0.6 }}>
+                        Date of Birth
+                    </BambiniText>
+                    <TouchableOpacity
+                        style={styles.datePickerButton}
+                        onPress={() => setShowDatePicker(!showDatePicker)}
+                        activeOpacity={0.7}
+                    >
+                        <BambiniText variant="body" color={dob ? '#1F2937' : '#9CA3AF'}>
+                            {dob ? dob : 'Select Date (YYYY-MM-DD)'}
+                        </BambiniText>
+                        <Calendar color={theme.primary} size={20} />
+                    </TouchableOpacity>
+
+                    {showDatePicker && (
+                        <DateTimePicker
+                            value={dob ? new Date(dob) : new Date()}
+                            mode="date"
+                            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                            maximumDate={new Date()} // Prevent future dates
+                            onChange={onChangeDate}
+                            themeVariant={colorScheme === 'dark' ? 'dark' : 'light'}
+                        />
+                    )}
 
                     {/* Gender Selection */}
                     <BambiniText variant="label" weight="semibold" style={{ marginBottom: 8, marginLeft: 4, opacity: 0.6 }}>
@@ -288,6 +318,17 @@ const styles = StyleSheet.create({
     },
     form: {
         marginBottom: 24,
+    },
+    datePickerButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        backgroundColor: '#FFFFFF',
+        borderWidth: 1,
+        borderColor: '#E8F1F5',
+        borderRadius: 16,
+        padding: 16,
+        marginBottom: 20,
     },
     genderRow: {
         flexDirection: 'row',

@@ -226,7 +226,24 @@ export function useChildActivities(childId?: string, ageDays?: number, currentDa
 
                     const existingTitles = finalActivitiesForToday.map((a: any) => a.activities?.title || a.title).filter(Boolean);
 
-                    const newGenerated = await generateActivities(ageDays || 0, slotsNeeded, recentFeedback, existingTitles);
+                    // Fetch "emerging" milestones to hyper-personalize the generated activities
+                    const { data: emergingMilestonesData } = await supabase
+                        .from('child_milestones')
+                        .select(`
+                            status,
+                            milestones_catalog!inner(title)
+                        `)
+                        .eq('child_id', childId)
+                        .eq('status', 'emerging')
+                        .limit(3);
+
+                    const emergingMilestones = (emergingMilestonesData || [])
+                        .map((m: any) => m.milestones_catalog?.title)
+                        .filter(Boolean);
+
+                    console.log(`[useChildActivities] Found ${emergingMilestones.length} emerging milestones to target.`);
+
+                    const newGenerated = await generateActivities(ageDays || 0, slotsNeeded, recentFeedback, existingTitles, emergingMilestones);
                     console.log(`[useChildActivities] Gemini successfully returned ${newGenerated.length} activities.`);
 
                     if (newGenerated.length > 0) {
@@ -648,6 +665,159 @@ export function useAddGrowthMeasurement() {
         },
         onSuccess: (_, variables) => {
             queryClient.invalidateQueries({ queryKey: ['growth_measurements', variables.child_id] });
+        },
+    });
+}
+
+export function useUpdateGrowthMeasurement() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (measurementData: {
+            id: string;
+            child_id: string;
+            date: string;
+            weight_kg?: number | null;
+            height_cm?: number | null;
+            head_circumference_cm?: number | null;
+        }) => {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) throw new Error('Not authenticated');
+
+            const { id, child_id, ...updateData } = measurementData;
+
+            const { data, error } = await supabase
+                .from('growth_measurements')
+                .update(updateData)
+                .eq('id', id)
+                .select()
+                .single();
+
+            if (error) throw error;
+            return data;
+        },
+        onSuccess: (_, variables) => {
+            queryClient.invalidateQueries({ queryKey: ['growth_measurements', variables.child_id] });
+        },
+    });
+}
+
+export function useDeleteGrowthMeasurement() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async ({ id }: { id: string }) => {
+            const { error } = await supabase
+                .from('growth_measurements')
+                .delete()
+                .eq('id', id);
+
+            if (error) throw error;
+            return true;
+        },
+        onSuccess: (_, variables: any) => {
+            // We invalidate the whole growth_measurements query, but it requires child_id to be exact. Let's just invalidate all growth_measurements lists.
+            queryClient.invalidateQueries({ queryKey: ['growth_measurements'] });
+        },
+    });
+}
+// ==========================================
+// NEW HEALTH TRACKING HOOKS
+// ==========================================
+
+export function useVaccinations(childId: string | undefined) {
+    return useQuery({
+        queryKey: ['vaccinations', childId],
+        enabled: !!childId,
+        queryFn: async () => {
+            const { data, error } = await supabase
+                .from('vaccinations')
+                .select('*')
+                .eq('child_id', childId)
+                .order('given_date', { ascending: false });
+            if (error) throw error;
+            return data;
+        },
+    });
+}
+
+export function useLogVaccination() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async ({ childId, vaccineName, doseNumber, givenDate, notes }: {
+            childId: string;
+            vaccineName: string;
+            doseNumber: number;
+            givenDate: string;
+            notes?: string;
+        }) => {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) throw new Error('Not authenticated');
+
+            const { data, error } = await supabase
+                .from('vaccinations')
+                .insert({
+                    child_id: childId,
+                    vaccine_name: vaccineName,
+                    dose_number: doseNumber,
+                    given_date: givenDate,
+                    notes,
+                    recorded_by: user.id
+                })
+                .select()
+                .single();
+            if (error) throw error;
+            return data;
+        },
+        onSuccess: (_, variables) => {
+            queryClient.invalidateQueries({ queryKey: ['vaccinations', variables.childId] });
+        },
+    });
+}
+
+export function useHealthLogs(childId: string | undefined) {
+    return useQuery({
+        queryKey: ['health_logs', childId],
+        enabled: !!childId,
+        queryFn: async () => {
+            const { data, error } = await supabase
+                .from('health_logs')
+                .select('*')
+                .eq('child_id', childId)
+                .order('log_date', { ascending: false })
+                .order('created_at', { ascending: false });
+            if (error) throw error;
+            return data;
+        },
+    });
+}
+
+export function useCreateHealthLog() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async ({ childId, logDate, symptoms, severity, notes, photoUrl }: {
+            childId: string;
+            logDate: string;
+            symptoms: string[];
+            severity: string;
+            notes?: string;
+            photoUrl?: string;
+        }) => {
+            const { data, error } = await supabase
+                .from('health_logs')
+                .insert({
+                    child_id: childId,
+                    log_date: logDate,
+                    symptoms,
+                    severity,
+                    notes,
+                    photo_url: photoUrl,
+                })
+                .select()
+                .single();
+            if (error) throw error;
+            return data;
+        },
+        onSuccess: (_, variables) => {
+            queryClient.invalidateQueries({ queryKey: ['health_logs', variables.childId] });
         },
     });
 }

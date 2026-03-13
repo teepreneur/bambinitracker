@@ -36,6 +36,11 @@ Two sub-tabs:
 **Timeline Tab (New):**
 - **Activity Timeline**: Displays a chronological narrative feed of all activities assigned and completed, with parent feedback entries.
 
+**Health Tab (New):**
+- **Quick Health Insights**: A summary card featuring a dynamic tip/reminder (e.g., upcoming vaccines).
+- **Vaccination Tracker**: Tracks vaccines against the standard Ghana EPI schedule, including a seamless "Mark as Given" button saving completion dates directly.
+- **Symptom Logger**: A comprehensive modal mimicking the activity feedback flow, allowing parents to select multiple symptoms (fever, cough, rash), severity level, write notes, and optionally attach photos.
+
 **Milestones Tab:**
 - **Horizontal age-stage chips** (0–3m through 5–6y) with mini SVG progress rings
 - **Collapsible domain accordion sections** with emoji headers, progress counts, and chevron toggles
@@ -180,10 +185,11 @@ erDiagram
     children ||--o{ parent_children : "belongs to"
     children ||--o{ child_activities : "assigned"
     children ||--o{ observations : "observed"
-    children ||--o{ milestone_progress : "tracks"
+    children ||--o{ child_milestones : "tracks mastery"
+    children ||--o{ observations : "completed activities"
     children ||--o{ growth_measurements : "measured"
-    activities ||--o{ child_activities : "assigned via"
-    activities ||--o{ observations : "completed via"
+    children ||--o{ vaccinations : "receives"
+    children ||--o{ health_logs : "logs symptoms"
     milestones_catalog ||--o{ milestone_progress : "tracked by"
     tips }|--|| tips : "standalone"
     invite_codes }|--|| children : "linked to"
@@ -238,6 +244,25 @@ erDiagram
         float weight_kg
         float height_cm
         float head_circumference_cm
+    }
+    vaccinations {
+        uuid id PK
+        uuid child_id FK
+        text vaccine_name
+        int dose_number
+        date given_date
+        text notes
+        timestamp created_at
+    }
+    health_logs {
+        uuid id PK
+        uuid child_id FK
+        date log_date
+        text[] symptoms
+        text severity
+        text notes
+        text photo_url
+        timestamp created_at
     }
 ```
 

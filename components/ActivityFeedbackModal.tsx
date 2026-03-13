@@ -25,6 +25,7 @@ interface ActivityFeedbackModalProps {
     onClose: () => void;
     onSubmit: (rating: string, note: string, mediaUrls: string[]) => void;
     isSubmitting: boolean;
+    isSuccess?: boolean;
 }
 
 const RATINGS = [
@@ -33,7 +34,7 @@ const RATINGS = [
     { value: 'too_hard', label: 'Too hard', emoji: '😓', color: '#FF5252' },
 ];
 
-export function ActivityFeedbackModal({ visible, onClose, onSubmit, isSubmitting }: ActivityFeedbackModalProps) {
+export function ActivityFeedbackModal({ visible, onClose, onSubmit, isSubmitting, isSuccess }: ActivityFeedbackModalProps) {
     const colorScheme = useColorScheme();
     const theme = Colors[colorScheme === 'dark' ? 'dark' : 'light'];
 
@@ -111,7 +112,20 @@ export function ActivityFeedbackModal({ visible, onClose, onSubmit, isSubmitting
                 <View style={[styles.modalContent, { backgroundColor: colorScheme === 'dark' ? '#1A1A1A' : '#f9f5ea' }]}>
                     <View style={styles.dragHandle} />
 
-                    {/* Header */}
+                    {isSuccess ? (
+                        <View style={styles.successContainer}>
+                            <BambiniText style={styles.celebrationEmoji}>🎊</BambiniText>
+                            <BambiniText variant="h1" weight="bold" style={{ textAlign: 'center', marginBottom: 8 }}>
+                                Amazing Job!
+                            </BambiniText>
+                            <BambiniText variant="body" style={{ textAlign: 'center', color: '#666666', marginBottom: 32 }}>
+                                You've logged a new memory for your child's developmental journey.
+                            </BambiniText>
+                            <BambiniButton title="Back to Activity" onPress={onClose} style={{ width: '100%' }} />
+                        </View>
+                    ) : (
+                        <>
+                            {/* Header */}
                     <View style={styles.header}>
                         <BambiniText variant="h2" weight="bold">Activity Completed! 🎉</BambiniText>
                         <TouchableOpacity onPress={onClose} style={styles.closeButton}>
@@ -202,7 +216,9 @@ export function ActivityFeedbackModal({ visible, onClose, onSubmit, isSubmitting
                         loading={isSubmitting || isUploading}
                         disabled={isSubmitting || isUploading}
                         style={{ marginTop: 32, marginBottom: Platform.OS === 'ios' ? 20 : 0 }}
-                    />
+                        />
+                        </>
+                    )}
                 </View>
             </KeyboardAvoidingView>
         </Modal>
@@ -225,6 +241,15 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.12,
         shadowRadius: 24,
         elevation: 20,
+        minHeight: 400,
+    },
+    successContainer: {
+        alignItems: 'center',
+        paddingVertical: 20,
+    },
+    celebrationEmoji: {
+        fontSize: 80,
+        marginBottom: 20,
     },
     dragHandle: {
         width: 48,

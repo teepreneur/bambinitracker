@@ -1,5 +1,6 @@
 import { BambiniText } from '@/components/design-system/BambiniText';
 import { ChildAvatar } from '@/components/design-system/ChildAvatar';
+import { GrowthChartsTab } from '@/components/GrowthChartsTab';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
 import {
@@ -52,7 +53,7 @@ function radarCoord(value: number, index: number, total: number) {
 export default function GrowthScreen() {
     const colorScheme = useColorScheme();
     const theme = Colors[colorScheme === 'dark' ? 'dark' : 'light'];
-    const [activeTab, setActiveTab] = useState<'Overview' | 'Milestones' | 'Timeline'>('Overview');
+    const [activeTab, setActiveTab] = useState<'Overview' | 'Milestones' | 'Timeline' | 'Health'>('Overview');
     const [selectedChildIndex, setSelectedChildIndex] = useState(0);
 
     const { data: children, isLoading: loadingChildren } = useChildren();
@@ -120,7 +121,7 @@ export default function GrowthScreen() {
 
             {/* Tab Switcher */}
             <View style={[styles.tabContainer, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-                {(['Overview', 'Milestones', 'Timeline'] as const).map((tab) => {
+                {(['Overview', 'Milestones', 'Timeline', 'Health'] as const).map((tab) => {
                     const isActive = activeTab === tab;
                     return (
                         <TouchableOpacity
@@ -154,8 +155,10 @@ export default function GrowthScreen() {
                 <OverviewTab childId={child.id} childName={child.name} theme={theme} />
             ) : activeTab === 'Milestones' ? (
                 <MilestonesTab childId={child.id} childDob={child.dob} theme={theme} />
-            ) : (
+            ) : activeTab === 'Timeline' ? (
                 <TimelineTab childId={child.id} childName={child.name} theme={theme} />
+            ) : (
+                <GrowthChartsTab child={child} theme={theme} />
             )}
         </ScrollView>
     );
@@ -684,9 +687,9 @@ function AnimatedMilestoneCard({
         if (currentStatus === 'achieved' && prevStatusRef.current !== 'achieved') {
             setShowSparkle(true);
             Animated.sequence([
-                Animated.timing(pulseAnim, { toValue: 1.03, duration: 150, useNativeDriver: true }),
-                Animated.timing(pulseAnim, { toValue: 0.97, duration: 100, useNativeDriver: true }),
-                Animated.timing(pulseAnim, { toValue: 1.0, duration: 120, useNativeDriver: true }),
+                Animated.timing(pulseAnim, { toValue: 1.03, duration: 150, useNativeDriver: false }),
+                Animated.timing(pulseAnim, { toValue: 0.97, duration: 100, useNativeDriver: false }),
+                Animated.timing(pulseAnim, { toValue: 1.0, duration: 120, useNativeDriver: false }),
             ]).start();
             setTimeout(() => setShowSparkle(false), 1500);
         }

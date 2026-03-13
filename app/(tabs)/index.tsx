@@ -8,7 +8,20 @@ import { useChildActivities, useChildren, useNewbornTips, useProfile, useUserObs
 import { isNewborn as checkIsNewborn, getAgeBreakdown, getChildAgeLabel, getStageLabel } from '@/utils/childAge';
 import { getActivityEmoji, getDomainColor, getDynamicGreeting } from '@/utils/ui';
 import { useRouter } from 'expo-router';
-import { CheckCircle2, ChevronRight, Palette, Plus } from 'lucide-react-native';
+import {
+  Baby,
+  Calendar,
+  CheckCircle2,
+  ChevronRight,
+  ClipboardList,
+  Heart,
+  Palette,
+  Plus,
+  Sparkles,
+  Star,
+  Target,
+  Trophy,
+} from 'lucide-react-native';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   AppState,
@@ -366,6 +379,28 @@ export default function HomeScreen() {
                         </TouchableOpacity>
                       </View>
                     )}
+
+                    <View style={styles.summaryStatsRow}>
+                      <View style={[styles.statCard, { backgroundColor: '#FFF7ED' }]}>
+                        <View style={[styles.statIconBox, { backgroundColor: '#FFEDD5' }]}>
+                          <Trophy color="#F97316" size={18} />
+                        </View>
+                        <View>
+                          <BambiniText variant="caption" weight="bold" color="#9A3412">Today's Goal</BambiniText>
+                          <BambiniText variant="h3" weight="bold" color="#1A1A1A">{completedCount}/5 Acts</BambiniText>
+                        </View>
+                      </View>
+
+                      <View style={[styles.statCard, { backgroundColor: '#F0FDF4' }]}>
+                        <View style={[styles.statIconBox, { backgroundColor: '#DCFCE7' }]}>
+                          <Sparkles color="#22C55E" size={18} />
+                        </View>
+                        <View>
+                          <BambiniText variant="caption" weight="bold" color="#166534">Daily Streak</BambiniText>
+                          <BambiniText variant="h3" weight="bold" color="#1A1A1A">{completedCount > 0 ? '1 Day 🔥' : '0 Days'}</BambiniText>
+                        </View>
+                      </View>
+                    </View>
                     {todayActivities.map((activity: any, index: number) => {
                       const dColor = getDomainColor(activity.domain);
                       const bgColor = dColor + '12';
@@ -407,18 +442,29 @@ export default function HomeScreen() {
 
                             {/* Title + Description */}
                             <View style={styles.activityInfo}>
-                              <BambiniText
-                                variant="body"
-                                weight="bold"
-                                color={isComplete ? '#9E9E9E' : '#1A1A1A'}
-                                style={[
-                                  { fontSize: 16, lineHeight: 22 },
-                                  isComplete && { textDecorationLine: 'line-through' }
-                                ]}
-                                numberOfLines={2}
-                              >
-                                {activity.title}
-                              </BambiniText>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginBottom: 4 }}>
+                                    <BambiniText variant="caption" weight="bold" color={getDomainColor(activity.domain)}>
+                                        {activity.domain}
+                                    </BambiniText>
+                                    <View style={[styles.focusBadge, { backgroundColor: getDomainColor(activity.domain) + '15' }]}>
+                                        <Sparkles size={10} color={getDomainColor(activity.domain)} />
+                                        <BambiniText variant="caption" weight="bold" color={getDomainColor(activity.domain)} style={{ fontSize: 10, marginLeft: 2 }}>
+                                            Developmental Focus
+                                        </BambiniText>
+                                    </View>
+                                </View>
+                                <BambiniText
+                                    variant="body"
+                                    weight="bold"
+                                    color={isComplete ? '#9E9E9E' : '#1A1A1A'}
+                                    style={[
+                                        { fontSize: 16, lineHeight: 22 },
+                                        isComplete && { textDecorationLine: 'line-through' }
+                                    ]}
+                                    numberOfLines={2}
+                                >
+                                    {activity.title}
+                                </BambiniText>
 
                               {/* Domain + Time Pills */}
                               <View style={styles.cardPillRow}>
@@ -557,6 +603,26 @@ const styles = StyleSheet.create({
     marginTop: 24,
     marginBottom: 16,
   },
+  summaryStatsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 16,
+  },
+  statCard: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 20,
+  },
+  statIconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
   tipsSection: {
     marginTop: 10,
     marginBottom: 8,
@@ -632,6 +698,13 @@ const styles = StyleSheet.create({
   activityInfo: {
     flex: 1,
     justifyContent: 'center',
+  },
+  focusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
   },
   cardPillRow: {
     flexDirection: 'row',

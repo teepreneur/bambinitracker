@@ -28,7 +28,8 @@ export async function generateActivities(
     ageDays: number,
     count: number = 5,
     recentFeedback: RecentFeedback[] = [],
-    existingTitles: string[] = []
+    existingTitles: string[] = [],
+    emergingMilestones: string[] = []
 ): Promise<GeneratedActivity[]> {
     if (!apiKey) {
         throw new Error("Gemini API key is missing. Please set EXPO_PUBLIC_GEMINI_API_KEY in your .env file.");
@@ -75,11 +76,23 @@ You MUST NOT generate any activities with these exact titles, and you MUST NOT g
 `;
     }
 
+    let milestonesContext = "";
+    if (emergingMilestones && emergingMilestones.length > 0) {
+        milestonesContext = `
+CURRENT DEVELOPMENTAL GOALS:
+The child is currently trying to master the following "emerging" milestones:
+${emergingMilestones.map(m => `- "${m}"`).join('\n')}
+
+Whenever possible, prioritize generating activities that directly help the child practice and achieve these specific milestones. Briefly mention how the activity helps with the milestone in the description.
+`;
+    }
+
     const prompt = `
 You are an expert pediatric occupational therapist and early childhood development specialist. 
 Your task is to perfectly tailor a set of daily developmental activities for a child who is exactly ${ageContext}
 ${feedbackContext}
 ${existingContext}
+${milestonesContext}
 
 Generate exactly ${count} highly engaging activities.
 
