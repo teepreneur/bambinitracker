@@ -6,7 +6,8 @@ import {
     ActivityIndicator,
     ViewStyle,
     TextStyle,
-    TouchableOpacityProps
+    TouchableOpacityProps,
+    View
 } from 'react-native';
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
@@ -16,6 +17,8 @@ interface BambiniButtonProps extends TouchableOpacityProps {
     variant?: 'primary' | 'secondary' | 'outline' | 'ghost';
     size?: 'small' | 'medium' | 'large';
     loading?: boolean;
+    leftIcon?: React.ReactNode;
+    rightIcon?: React.ReactNode;
     style?: ViewStyle;
     textStyle?: TextStyle;
 }
@@ -25,6 +28,8 @@ export function BambiniButton({
     variant = 'primary',
     size = 'medium',
     loading = false,
+    leftIcon,
+    rightIcon,
     style,
     textStyle,
     disabled,
@@ -77,15 +82,19 @@ export function BambiniButton({
             {loading ? (
                 <ActivityIndicator color={getTextColor()} />
             ) : (
-                <Text style={[
-                    styles.text,
-                    { color: getTextColor() },
-                    size === 'small' && { fontSize: 14 },
-                    size === 'large' && { fontSize: 18 },
-                    textStyle
-                ]}>
-                    {title}
-                </Text>
+                <>
+                    {leftIcon && <View style={{ marginRight: 8 }}>{leftIcon}</View>}
+                    <Text style={[
+                        styles.text,
+                        { color: getTextColor() },
+                        size === 'small' && { fontSize: 14 },
+                        size === 'large' && { fontSize: 18 },
+                        textStyle
+                    ]}>
+                        {title}
+                    </Text>
+                    {rightIcon && <View style={{ marginLeft: 8 }}>{rightIcon}</View>}
+                </>
             )}
         </TouchableOpacity>
     );

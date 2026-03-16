@@ -1,4 +1,4 @@
-import { generateActivities } from '@/lib/gemini';
+import { generateActivities, synthesizeMilestoneInsights } from '@/lib/gemini';
 import { supabase } from '@/lib/supabase';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert } from 'react-native';
@@ -141,7 +141,7 @@ export function useChildActivities(childId?: string, ageDays?: number, currentDa
         queryKey: ['child_activities', childId, currentDate, 'v5'],
         enabled: !!childId && !!currentDate,
         queryFn: async () => {
-            console.log(`[useChildActivities] Fired! childId: ${childId}, ageDays: ${ageDays}, date: ${currentDate}`);
+            console.log(`[useChildActivities] Fired! childId: ${childId}, date: ${currentDate}`);
 
             // 1. Fetch activities assigned to this child
             const { data: existingActivities, error: fetchError } = await supabase
@@ -154,12 +154,9 @@ export function useChildActivities(childId?: string, ageDays?: number, currentDa
                 `)
                 .eq('child_id', childId);
 
-            if (fetchError) {
-                console.error("[useChildActivities] Supabase Fetch Error:", fetchError);
-                throw fetchError;
-            }
+            if (fetchError) throw fetchError;
 
-            // 2. Fetch observations for this child to determine completion status
+            // 2. Fetch observations
             const { data: observations } = await supabase
                 .from('observations')
                 .select('activity_id')
@@ -169,152 +166,160 @@ export function useChildActivities(childId?: string, ageDays?: number, currentDa
                 (observations || []).map((o: any) => o.activity_id)
             );
 
-            console.log(`[useChildActivities] Found ${existingActivities?.length || 0} existing activities, ${completedActivityIds.size} completed.`);
-
-            // 3. Categorize Assignments
+            // 3. Filter for Today (based on assignments)
             const todayAssignments = existingActivities.filter(a => a.assigned_at?.startsWith(currentDate!));
-            const pastAssignments = existingActivities.filter(a => !a.assigned_at?.startsWith(currentDate!));
-
-            const completedToday = todayAssignments.filter(a => completedActivityIds.has(a.activity_id));
-            const incompleteToday = todayAssignments.filter(a => !completedActivityIds.has(a.activity_id));
-            const pastIncomplete = pastAssignments.filter(a => !completedActivityIds.has(a.activity_id));
-
-            let finalActivitiesForToday = [...completedToday, ...incompleteToday];
-            let slotsNeeded = 5 - finalActivitiesForToday.length;
-
-            console.log(`[useChildActivities] Today has ${finalActivitiesForToday.length} acts. Slots needed: ${slotsNeeded}. Past incomplete available: ${pastIncomplete.length}`);
-
-            // 4. ROLLOVER LOGIC
-            if (slotsNeeded > 0 && pastIncomplete.length > 0) {
-                const toRollOver = pastIncomplete.slice(0, slotsNeeded);
-                console.log(`[useChildActivities] Rolling over ${toRollOver.length} past activities to today.`);
-
-                const { error: rollError } = await supabase
-                    .from('child_activities')
-                    .update({ assigned_at: new Date().toISOString() })
-                    .in('id', toRollOver.map(a => a.id));
-
-                if (rollError) {
-                    console.error("[useChildActivities] Failed to auto-rollover:", rollError);
-                } else {
-                    finalActivitiesForToday = [...finalActivitiesForToday, ...toRollOver];
-                    slotsNeeded -= toRollOver.length;
-
-                    // We invalidate the cache to trigger a clean refetch 
-                    // (though optimistic update here works too)
-                }
-            }
-
-            // 5. TOP-OFF LOGIC
-            if (slotsNeeded > 0) {
-                console.log(`[useChildActivities] Generating ${slotsNeeded} fresh activities via Gemini...`);
-                try {
-                    // Fetch recent feedback to guide the AI
-                    const { data: recentObs } = await supabase
-                        .from('observations')
-                        .select(`rating, note, activities(title)`)
-                        .eq('child_id', childId)
-                        .not('rating', 'is', null)
-                        .order('created_at', { ascending: false })
-                        .limit(5);
-
-                    const recentFeedback = (recentObs || []).map((obs: any) => ({
-                        title: obs.activities?.title || 'Unknown Activity',
-                        rating: obs.rating,
-                        note: obs.note || '',
-                    })).filter(f => f.rating !== 'completed');
-
-                    const existingTitles = finalActivitiesForToday.map((a: any) => a.activities?.title || a.title).filter(Boolean);
-
-                    // Fetch "emerging" milestones to hyper-personalize the generated activities
-                    const { data: emergingMilestonesData } = await supabase
-                        .from('child_milestones')
-                        .select(`
-                            status,
-                            milestones_catalog!inner(title)
-                        `)
-                        .eq('child_id', childId)
-                        .eq('status', 'emerging')
-                        .limit(3);
-
-                    const emergingMilestones = (emergingMilestonesData || [])
-                        .map((m: any) => m.milestones_catalog?.title)
-                        .filter(Boolean);
-
-                    console.log(`[useChildActivities] Found ${emergingMilestones.length} emerging milestones to target.`);
-
-                    const newGenerated = await generateActivities(ageDays || 0, slotsNeeded, recentFeedback, existingTitles, emergingMilestones);
-                    console.log(`[useChildActivities] Gemini successfully returned ${newGenerated.length} activities.`);
-
-                    if (newGenerated.length > 0) {
-                        // Insert the newly generated activities into the `activities` catalog
-                        const currentAgeDays = ageDays || 0;
-                        let ageBand = '0-3 months';
-                        if (currentAgeDays < 90) ageBand = '0-3 months';
-                        else if (currentAgeDays < 180) ageBand = '3-6 months';
-                        else if (currentAgeDays < 365) ageBand = '6-12 months';
-                        else if (currentAgeDays < 730) ageBand = '12-24 months';
-                        else if (currentAgeDays < 1095) ageBand = '24-36 months';
-                        else ageBand = '36-48 months';
-
-                        const activitiesToInsert = newGenerated.map(a => ({
-                            title: a.title,
-                            description: a.description,
-                            domain: a.domain,
-                            min_age_months: Math.max(0, a.target_age_months - 1),
-                            max_age_months: a.target_age_months + 1,
-                            estimated_duration_minutes: parseInt(a.estimated_time) || 10,
-                            age_band: ageBand,
-                            difficulty_level: 'easy',
-                        }));
-
-                        const { data: insertedActivities, error: insertError } = await supabase
-                            .from('activities')
-                            .insert(activitiesToInsert)
-                            .select();
-
-                        if (insertError) throw insertError;
-
-                        // Assign these new activities to the child
-                        const assignmentsToInsert = insertedActivities.map(a => ({
-                            child_id: childId,
-                            activity_id: a.id,
-                            assigned_at: new Date().toISOString()
-                        }));
-
-                        const { data: insertedAssignments, error: assignError } = await supabase
-                            .from('child_activities')
-                            .insert(assignmentsToInsert)
-                            .select();
-
-                        if (assignError) throw assignError;
-
-                        // Add to our final pool
-                        const newlyFormatted = insertedAssignments.map((ca: any) => {
-                            const act = insertedActivities.find(a => a.id === ca.activity_id);
-                            return {
-                                id: ca.id,
-                                assigned_at: ca.assigned_at,
-                                activity_id: ca.activity_id,
-                                activities: act
-                            };
-                        });
-                        finalActivitiesForToday = [...finalActivitiesForToday, ...newlyFormatted];
-                    }
-                } catch (err: any) {
-                    console.error("Hook catch block caught error during top-off:", err);
-                    Alert.alert("Activity Error", err.message || "Failed to generate top-off activities.");
-                }
-            }
-
-            // 6. Return Formatting
-            return finalActivitiesForToday.map((ca: any) => ({
+            
+            // 4. Return formatted
+            return todayAssignments.map((ca: any) => ({
                 ...ca.activities,
                 id: ca.activities.id,
                 assignment_id: ca.id,
                 isCompleted: completedActivityIds.has(ca.activity_id)
             }));
         },
+    });
+}
+
+/**
+ * useSyncDailyActivities
+ * Handles the logic of rolling over incomplete activities and topping off with Gemini.
+ * This is now a mutation to prevent side-effects during query fetching.
+ */
+export function useSyncDailyActivities() {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: async ({ childId, ageDays, currentDate }: { childId: string; ageDays: number; currentDate: string }) => {
+            console.log(`[useSyncDailyActivities] Starting sync for ${currentDate}...`);
+
+            // 1. Fetch all assignments
+            const { data: existingAssignments, error: fetchError } = await supabase
+                .from('child_activities')
+                .select(`id, assigned_at, activity_id`)
+                .eq('child_id', childId);
+
+            if (fetchError) throw fetchError;
+
+            // 2. Fetch completed activity IDs
+            const { data: observations } = await supabase
+                .from('observations')
+                .select('activity_id')
+                .eq('child_id', childId);
+
+            const completedActivityIds = new Set((observations || []).map((o: any) => o.activity_id));
+
+            // 3. Categorize
+            const todayAssignments = existingAssignments.filter(a => a.assigned_at?.startsWith(currentDate));
+            const pastAssignments = existingAssignments.filter(a => !a.assigned_at?.startsWith(currentDate));
+            const pastIncomplete = pastAssignments.filter(a => !completedActivityIds.has(a.activity_id));
+
+            let currentCount = todayAssignments.length;
+            let slotsNeeded = 5 - currentCount;
+
+            if (slotsNeeded <= 0) {
+                console.log("[useSyncDailyActivities] Slots already full.");
+                return { synced: 0 };
+            }
+
+            // 4. ROLLOVER
+            if (slotsNeeded > 0 && pastIncomplete.length > 0) {
+                const toRollOver = pastIncomplete.slice(0, slotsNeeded);
+                const { error: rollError } = await supabase
+                    .from('child_activities')
+                    .update({ assigned_at: new Date().toISOString() })
+                    .in('id', toRollOver.map(a => a.id));
+
+                if (!rollError) {
+                    slotsNeeded -= toRollOver.length;
+                }
+            }
+
+            // 5. TOP-OFF (Gemini)
+            if (slotsNeeded > 0) {
+                console.log(`[useSyncDailyActivities] Gemini sync needed: ${slotsNeeded} slots.`);
+                
+                // Fetch recent feedback
+                const { data: recentObs } = await supabase
+                    .from('observations')
+                    .select(`rating, note, activities(title)`)
+                    .eq('child_id', childId)
+                    .not('rating', 'is', null)
+                    .order('created_at', { ascending: false })
+                    .limit(5);
+
+                const recentFeedback = (recentObs || []).map((obs: any) => ({
+                    title: obs.activities?.title || 'Unknown Activity',
+                    rating: obs.rating,
+                    note: obs.note || '',
+                })).filter(f => f.rating !== 'completed');
+
+                const existingTitles = [...todayAssignments, ...pastAssignments]
+                    .map((a: any) => a.activities?.title).filter(Boolean);
+
+                const { data: emergingMilestonesData } = await supabase
+                    .from('child_milestones')
+                    .select(`status, milestones_catalog!inner(title)`)
+                    .eq('child_id', childId)
+                    .eq('status', 'emerging')
+                    .limit(3);
+
+                const emergingMilestones = (emergingMilestonesData || [])
+                    .map((m: any) => m.milestones_catalog?.title)
+                    .filter(Boolean);
+
+                const newGenerated = await generateActivities(ageDays, slotsNeeded, recentFeedback, existingTitles, emergingMilestones);
+
+                if (newGenerated.length > 0) {
+                   // Calculate age band
+                   let ageBand = '0-3 months';
+                   if (ageDays < 90) ageBand = '0-3 months';
+                   else if (ageDays < 180) ageBand = '3-6 months';
+                   else if (ageDays < 365) ageBand = '6-12 months';
+                   else if (ageDays < 730) ageBand = '12-24 months';
+                   else if (ageDays < 1095) ageBand = '24-36 months';
+                   else ageBand = '36-48 months';
+
+                    const activitiesToInsert = newGenerated.map(a => ({
+                        title: a.title,
+                        description: a.description,
+                        domain: a.domain,
+                        min_age_months: Math.max(0, a.target_age_months - 1),
+                        max_age_months: a.target_age_months + 1,
+                        estimated_duration_minutes: parseInt(a.estimated_time) || 10,
+                        age_band: ageBand,
+                        difficulty_level: 'easy',
+                        target_milestone: a.target_milestone || null,
+                        instructions: a.instructions || [],
+                        materials: a.materials || [],
+                        tips: a.tips || [],
+                    }));
+
+                    const { data: insertedActivities, error: insertError } = await supabase
+                        .from('activities')
+                        .insert(activitiesToInsert)
+                        .select();
+
+                    if (insertError) throw insertError;
+
+                    const assignmentsToInsert = insertedActivities.map(a => ({
+                        child_id: childId,
+                        activity_id: a.id,
+                        assigned_at: new Date().toISOString()
+                    }));
+
+                    const { error: assignError } = await supabase
+                        .from('child_activities')
+                        .insert(assignmentsToInsert);
+
+                    if (assignError) throw assignError;
+                }
+            }
+
+            return { synced: 5 - slotsNeeded };
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['child_activities'] });
+        }
     });
 }
 
@@ -372,11 +377,119 @@ export function useCompleteActivity() {
             }
             return data;
         },
-        onSuccess: () => {
-            // Invalidate activities so the home screen updates
-            queryClient.invalidateQueries({ queryKey: ['child_activities'] });
-            queryClient.invalidateQueries({ queryKey: ['observations'] });
+        onMutate: async (variables) => {
+            const today = new Date().toISOString().split('T')[0];
+            const summaryKey = ['daily_summary', variables.childId, today, 'v2'];
+            const completedKey = ['activity_completed', variables.activityId, variables.childId];
+
+            // Cancel outgoing refetches
+            await queryClient.cancelQueries({ queryKey: completedKey });
+            await queryClient.cancelQueries({ queryKey: summaryKey });
+
+            // Snapshot previous values
+            const previousCompleted = queryClient.getQueryData(completedKey);
+            const previousSummary = queryClient.getQueryData(summaryKey);
+
+            // Optimistically update
+            queryClient.setQueryData(completedKey, true);
+            if (previousSummary) {
+                queryClient.setQueryData(summaryKey, (old: any) => ({
+                    ...old,
+                    completedCount: (old?.completedCount || 0) + 1
+                }));
+            }
+
+            return { previousCompleted, previousSummary, summaryKey, completedKey };
         },
+        onError: (err, variables, context: any) => {
+            if (context?.completedKey) {
+                queryClient.setQueryData(context.completedKey, context.previousCompleted);
+            }
+            if (context?.summaryKey) {
+                queryClient.setQueryData(context.summaryKey, context.previousSummary);
+            }
+        },
+        onSettled: (data, error, variables) => {
+            queryClient.invalidateQueries({ queryKey: ['activity_completed', variables.activityId, variables.childId] });
+            queryClient.invalidateQueries({ queryKey: ['daily_summary', variables.childId] });
+            queryClient.invalidateQueries({ queryKey: ['child_activities', variables.childId] });
+            queryClient.invalidateQueries({ queryKey: ['observations', variables.childId] });
+        },
+    });
+}
+
+/**
+ * AI Observation Synthesis
+ * Analyzes recent activity notes against the milestone catalog
+ * to suggest achievements/emerging states.
+ */
+export function useMilestoneSynthesis(childId?: string, childName?: string, ageMonths?: number) {
+    const { data: observations } = useChildObservations(childId);
+    const { data: catalog } = useMilestonesCatalog();
+    const { data: childMilestones } = useChildMilestones(childId);
+
+    return useQuery({
+        queryKey: ['milestone_synthesis', childId], // Remove observations length to prevent over-triggering
+        enabled: !!childId && !!observations && !!catalog && !!childMilestones,
+        staleTime: 1000 * 60 * 60 * 2, // 2 hours - Insights are heavy, don't re-run often
+        gcTime: 1000 * 60 * 60 * 24, // Keep in cache for a day
+        queryFn: async () => {
+            console.log(`[useMilestoneSynthesis] Checking for insights for ${childName}...`);
+            if (!childId || !childName || !ageMonths || !observations || !catalog || !childMilestones) return null;
+
+            // Only run if we have at least 3 observations with notes to avoid low-quality AI results
+            const noteObs = observations.filter(o => o.note && o.note.trim().length > 10);
+            if (noteObs.length < 3) {
+                console.log(`[useMilestoneSynthesis] Not enough high-quality notes (${noteObs.length}/3). Skipping AI.`);
+                return null;
+            }
+
+            // 1. Get recent observations with notes (last 10)
+            const recentObs = observations
+                .filter(o => o.note && o.note.trim().length > 5)
+                .slice(0, 10)
+                .map(o => ({
+                    title: (o as any).activities?.[0]?.title || (o as any).activities?.title || 'Activity',
+                    note: o.note || '',
+                    domain: (o as any).activities?.[0]?.domain || (o as any).activities?.domain || 'Unknown'
+                }));
+
+            if (recentObs.length === 0) return null;
+
+            // 2. Identify "Potential" milestones (not yet achieved, for current age range)
+            const achievedIds = new Set(childMilestones.filter(m => m.status === 'achieved').map(m => m.milestone_id));
+            
+            const potentialMilestones = catalog
+                .filter(m => !achievedIds.has(m.id))
+                // Relaxed age range filter: -2 to +2 months from current age
+                .filter(m => {
+                    const min = m.age_min_months || m.age_months - 2;
+                    const max = m.age_max_months || m.age_months + 2;
+                    return ageMonths >= min && ageMonths <= max;
+                })
+                .slice(0, 10); // Limit context for LLM
+
+            if (potentialMilestones.length === 0) return null;
+
+            // 3. Call AI Synthesis
+            const result = await synthesizeMilestoneInsights(
+                childName,
+                ageMonths,
+                recentObs,
+                potentialMilestones
+            );
+
+            if (!result) return null;
+
+            // 4. Enrich result with the full milestone object
+            const milestone = catalog.find(m => m.id === result.milestone_id);
+            if (!milestone) return null;
+
+            return {
+                ...result,
+                milestone
+            };
+        }
     });
 }
 
@@ -409,6 +522,51 @@ export function useChildObservations(childId?: string) {
                 throw error;
             }
             return data;
+        },
+    });
+}
+
+// Fetch daily summary stats for a child
+export function useDailySummary(childId?: string, date?: string) {
+    const today = new Date().toISOString().split('T')[0];
+    const effectiveDate = date || today;
+
+    return useQuery({
+        queryKey: ['daily_summary', childId, effectiveDate, 'v2'],
+        enabled: !!childId,
+        queryFn: async () => {
+            // 1. Get IDs of activities assigned for TODAY specifically
+            const { data: assignments } = await supabase
+                .from('child_activities')
+                .select('activity_id')
+                .eq('child_id', childId)
+                .gte('assigned_at', `${effectiveDate}T00:00:000Z`)
+                .lte('assigned_at', `${effectiveDate}T23:59:59.999Z`);
+
+            const assignedIds = (assignments || []).map(a => a.activity_id);
+
+            if (assignedIds.length === 0) {
+                return { completedCount: 0, goal: 5 };
+            }
+
+            // 2. Count observations for those specific assigned activities today
+            const { data, error } = await supabase
+                .from('observations')
+                .select('id')
+                .eq('child_id', childId)
+                .in('activity_id', assignedIds)
+                .gte('created_at', `${effectiveDate}T00:00:00.000Z`)
+                .lte('created_at', `${effectiveDate}T23:59:59.999Z`);
+
+            if (error) {
+                console.error("[useDailySummary] Error:", error);
+                return { completedCount: 0, goal: 5 };
+            }
+
+            return {
+                completedCount: data?.length || 0,
+                goal: 5 // Target daily activities
+            };
         },
     });
 }
@@ -615,7 +773,30 @@ export function useToggleChildMilestone() {
                 if (error) throw error;
             }
         },
-        onSuccess: (_, variables) => {
+        onMutate: async (variables) => {
+            await queryClient.cancelQueries({ queryKey: ['child_milestones', variables.childId] });
+            const previousMilestones = queryClient.getQueryData(['child_milestones', variables.childId]);
+
+            queryClient.setQueryData(['child_milestones', variables.childId], (old: any[]) => {
+                if (!old) return [];
+                const exists = old.find(m => m.milestone_id === variables.milestoneId);
+                if (variables.status === null) {
+                    return old.filter(m => m.milestone_id !== variables.milestoneId);
+                }
+                if (exists) {
+                    return old.map(m => m.milestone_id === variables.milestoneId ? { ...m, status: variables.status } : m);
+                }
+                return [...old, { milestone_id: variables.milestoneId, status: variables.status, achieved_date: variables.status === 'achieved' ? new Date().toISOString() : null }];
+            });
+
+            return { previousMilestones };
+        },
+        onError: (err, variables, context) => {
+            if (context?.previousMilestones) {
+                queryClient.setQueryData(['child_milestones', variables.childId], context.previousMilestones);
+            }
+        },
+        onSettled: (data, error, variables) => {
             queryClient.invalidateQueries({ queryKey: ['child_milestones', variables.childId] });
         },
     });

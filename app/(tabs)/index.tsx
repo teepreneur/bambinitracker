@@ -4,9 +4,10 @@ import { BambiniText } from '@/components/design-system/BambiniText';
 import { ChildAvatar } from '@/components/design-system/ChildAvatar';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
-import { useChildActivities, useChildren, useNewbornTips, useProfile, useUserObservations } from '@/hooks/useData';
+import { useChildActivities, useChildren, useGrowthMeasurements, useNewbornTips, useProfile, useSyncDailyActivities, useUserObservations } from '@/hooks/useData';
 import { isNewborn as checkIsNewborn, getAgeBreakdown, getChildAgeLabel, getStageLabel } from '@/utils/childAge';
 import { getActivityEmoji, getDomainColor, getDynamicGreeting } from '@/utils/ui';
+import { calculateStreak } from '@/utils/gamification';
 import { useRouter } from 'expo-router';
 import {
   Baby,
@@ -17,25 +18,22 @@ import {
   Heart,
   Palette,
   Plus,
+  Ruler, // Added
+  Scale, // Added
   Sparkles,
   Star,
   Target,
+  TrendingUp, // Added
   Trophy,
 } from 'lucide-react-native';
 import React, { useEffect, useMemo, useState } from 'react';
-import {
-  AppState,
-  AppStateStatus,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View
-} from 'react-native';
+import { Alert, AppState, AppStateStatus, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Svg, { Circle } from 'react-native-svg';
 
 export default function HomeScreen() {
+  const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
   const theme = Colors[colorScheme === 'dark' ? 'dark' : 'light'];
   const router = useRouter();
@@ -49,6 +47,7 @@ export default function HomeScreen() {
   const { data: profile } = useProfile();
   const { data: allChildren, isLoading: loadingChildren } = useChildren();
   const { data: userObservations } = useUserObservations();
+  const syncDaily = useSyncDailyActivities();
 
   // Derived Values
   const children = allChildren || [];
@@ -113,6 +112,21 @@ export default function HomeScreen() {
     currentDate
   );
 
+  // Auto-sync if we have fewer than 5 activities
+  useEffect(() => {
+    if (selectedChild?.id && ageDays !== undefined && !loadingActivities && todayActivities.length < 5) {
+      console.log(`[HomeScreen] Triggering sync for ${selectedChild.name}. Current count: ${todayActivities.length}`);
+      syncDaily.mutate({
+        childId: selectedChild.id,
+        ageDays,
+        currentDate
+      });
+    }
+  }, [selectedChild?.id, ageDays, loadingActivities, todayActivities.length, currentDate]);
+
+  const { data: growthMeasurements = [] } = useGrowthMeasurements(selectedChild?.id);
+  const latestGrowth = growthMeasurements[growthMeasurements.length - 1];
+
   const allActivitiesDone = useMemo(() => {
     return todayActivities.length > 0 && todayActivities.every((a: any) => a.isCompleted);
   }, [todayActivities]);
@@ -121,6 +135,7 @@ export default function HomeScreen() {
   const completedCount = todayActivities.filter((a: any) => a.isCompleted).length;
   const totalCount = todayActivities.length;
   const completionPercent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+  const currentStreak = useMemo(() => calculateStreak(userObservations || []), [userObservations]);
 
   // --- Newborn Logic ---
   const isNewborn = checkIsNewborn(selectedChild?.dob);
@@ -136,7 +151,7 @@ export default function HomeScreen() {
         contentContainerStyle={{ paddingBottom: 100 }}
       >
         {/* Top Header */}
-        <View style={styles.header}>
+        <View style={[styles.header, { marginTop: Math.max(insets.top, 20) + 10 }]}>
           <View>
             <BambiniText variant="body" color={theme.textSecondary}>
               {isNewborn ? "Congratulations," : getDynamicGreeting()}
@@ -225,24 +240,41 @@ export default function HomeScreen() {
 
             {/* Stage Card */}
             {selectedChild && (
-              <BambiniCard style={[styles.stageCard, { backgroundColor: isNewborn ? '#EC4899' : '#26B8B8', borderRadius: 24, padding: 24 }]} variant="elevated">
+              <BambiniCard style={[styles.stageCard, { backgroundColor: isNewborn ? '#EC4899' : '#26B8B8', borderRadius: 24, padding: 20 }]} variant="elevated">
                 <View style={styles.stageContent}>
                   <View style={{ flex: 1 }}>
-                    <BambiniText variant="body" color="rgba(255,255,255,0.9)" weight="medium" style={{ marginBottom: 4 }}>
-                      {selectedChild.name} —
+                    <BambiniText variant="h2" color="#FFFFFF" weight="bold" style={{ fontSize: 22, marginBottom: 2 }}>
+                      {selectedChild.name}
                     </BambiniText>
-                    <BambiniText variant="h1" color="#FFFFFF" weight="bold" style={{ fontSize: 28, marginBottom: 2 }}>
-                      {getStageLabel(selectedChild?.dob)}
+                    <BambiniText variant="caption" color="rgba(255,255,255,0.8)" weight="medium">
+                      {getChildAgeLabel(selectedChild?.dob)}
                     </BambiniText>
-                    <BambiniText variant="caption" color="rgba(255,255,255,0.8)">
-                      ({getChildAgeLabel(selectedChild?.dob)})
-                    </BambiniText>
+
+                    {/* Growth Stats Row */}
+                    <View style={styles.growthStatsRowCompact}>
+                      {latestGrowth?.weight_kg && (
+                        <View style={styles.growthStatItem}>
+                          <Scale size={14} color="rgba(255,255,255,0.7)" />
+                          <BambiniText variant="caption" color="#FFFFFF" weight="bold" style={{ marginLeft: 4 }}>
+                            {latestGrowth.weight_kg}kg
+                          </BambiniText>
+                        </View>
+                      )}
+                      {latestGrowth?.height_cm && (
+                        <View style={styles.growthStatItem}>
+                          <Ruler size={14} color="rgba(255,255,255,0.7)" />
+                          <BambiniText variant="caption" color="#FFFFFF" weight="bold" style={{ marginLeft: 4 }}>
+                            {latestGrowth.height_cm}cm
+                          </BambiniText>
+                        </View>
+                      )}
+                    </View>
                   </View>
 
-                  {/* Circular Progress */}
+                  {/* Circular Progress (Smaller) */}
                   {(() => {
-                    const size = 70;
-                    const strokeWidth = 5;
+                    const size = 60;
+                    const strokeWidth = 4;
                     const radius = (size - strokeWidth) / 2;
                     const circumference = 2 * Math.PI * radius;
                     const strokeDashoffset = circumference - (circumference * completionPercent) / 100;
@@ -270,7 +302,7 @@ export default function HomeScreen() {
                           />
                         </Svg>
                         <View style={{ position: 'absolute', alignItems: 'center' }}>
-                          <BambiniText variant="caption" color="#FFFFFF" weight="bold" style={{ fontSize: 15 }}>
+                          <BambiniText variant="caption" color="#FFFFFF" weight="bold" style={{ fontSize: 13 }}>
                             {completionPercent}%
                           </BambiniText>
                         </View>
@@ -279,10 +311,24 @@ export default function HomeScreen() {
                   })()}
                 </View>
 
-                {/* Progress summary text */}
-                <BambiniText variant="caption" color="rgba(255,255,255,0.7)" style={{ marginTop: 12 }}>
-                  {completedCount}/{totalCount} activities done today
-                </BambiniText>
+                {/* Dashboard Quick Actions */}
+                <View style={styles.dashboardActions}>
+                  <TouchableOpacity 
+                    style={styles.dashboardActionBtn}
+                    onPress={() => router.push('/(tabs)/health')}
+                  >
+                    <TrendingUp color="#FFFFFF" size={18} />
+                    <BambiniText variant="caption" weight="bold" color="#FFFFFF" style={{ marginLeft: 6 }}>Log Growth</BambiniText>
+                  </TouchableOpacity>
+                  <View style={styles.dashboardActionDivider} />
+                  <TouchableOpacity 
+                    style={styles.dashboardActionBtn}
+                    onPress={() => router.push({ pathname: '/(tabs)/growth', params: { tab: 'Milestones' } })}
+                  >
+                    <Target color="#FFFFFF" size={18} />
+                    <BambiniText variant="caption" weight="bold" color="#FFFFFF" style={{ marginLeft: 6 }}>Milestones</BambiniText>
+                  </TouchableOpacity>
+                </View>
               </BambiniCard>
             )}
 
@@ -343,6 +389,28 @@ export default function HomeScreen() {
               </View>
             ) : (
               <View>
+                    <View style={styles.summaryStatsRow}>
+                      <View style={[styles.statCard, { backgroundColor: '#FFF7ED' }]}>
+                        <View style={[styles.statIconBox, { backgroundColor: '#FFEDD5' }]}>
+                          <Trophy color="#F97316" size={18} />
+                        </View>
+                        <View>
+                          <BambiniText variant="caption" weight="bold" color="#9A3412">Today's Goal</BambiniText>
+                          <BambiniText variant="h3" weight="bold" color="#1A1A1A">{completedCount}/5 Acts</BambiniText>
+                        </View>
+                      </View>
+
+                      <View style={[styles.statCard, { backgroundColor: '#F0FDF4' }]}>
+                        <View style={[styles.statIconBox, { backgroundColor: '#DCFCE7' }]}>
+                          <Sparkles color="#22C55E" size={18} />
+                        </View>
+                        <View>
+                          <BambiniText variant="caption" weight="bold" color="#166534">Daily Streak</BambiniText>
+                          <BambiniText variant="h3" weight="bold" color="#1A1A1A">{currentStreak} {currentStreak === 1 ? 'Day' : 'Days'} 🔥</BambiniText>
+                        </View>
+                      </View>
+                    </View>
+
                 {todayActivities.length === 0 ? (
                   <View style={styles.emptyState}>
                     <Palette color={theme.tabIconDefault} size={64} style={{ opacity: 0.3 }} />
@@ -372,35 +440,13 @@ export default function HomeScreen() {
                 ) : (
                   <>
                     {allActivitiesDone && showCompletedList && (
-                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, paddingHorizontal: 4 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, paddingHorizontal: 4, marginTop: 12 }}>
                         <BambiniText variant="body" weight="bold" color="#4CAF50">✨ All activities completed!</BambiniText>
                         <TouchableOpacity onPress={() => setShowCompletedList(false)}>
                           <BambiniText variant="caption" weight="bold" color={theme.textSecondary}>Hide</BambiniText>
                         </TouchableOpacity>
                       </View>
                     )}
-
-                    <View style={styles.summaryStatsRow}>
-                      <View style={[styles.statCard, { backgroundColor: '#FFF7ED' }]}>
-                        <View style={[styles.statIconBox, { backgroundColor: '#FFEDD5' }]}>
-                          <Trophy color="#F97316" size={18} />
-                        </View>
-                        <View>
-                          <BambiniText variant="caption" weight="bold" color="#9A3412">Today's Goal</BambiniText>
-                          <BambiniText variant="h3" weight="bold" color="#1A1A1A">{completedCount}/5 Acts</BambiniText>
-                        </View>
-                      </View>
-
-                      <View style={[styles.statCard, { backgroundColor: '#F0FDF4' }]}>
-                        <View style={[styles.statIconBox, { backgroundColor: '#DCFCE7' }]}>
-                          <Sparkles color="#22C55E" size={18} />
-                        </View>
-                        <View>
-                          <BambiniText variant="caption" weight="bold" color="#166534">Daily Streak</BambiniText>
-                          <BambiniText variant="h3" weight="bold" color="#1A1A1A">{completedCount > 0 ? '1 Day 🔥' : '0 Days'}</BambiniText>
-                        </View>
-                      </View>
-                    </View>
                     {todayActivities.map((activity: any, index: number) => {
                       const dColor = getDomainColor(activity.domain);
                       const bgColor = dColor + '12';
@@ -421,7 +467,7 @@ export default function HomeScreen() {
                           ]}
                           onPress={() => router.push({
                             pathname: '/activity/[id]',
-                            params: { id: activity.id, childId: selectedChild?.id }
+                            params: { id: activity.activities?.id || activity.activity_id || activity.id, childId: selectedChild?.id }
                           })}
                         >
                           {/* Top Row: Emoji + Title + Duration */}
@@ -449,7 +495,7 @@ export default function HomeScreen() {
                                     <View style={[styles.focusBadge, { backgroundColor: getDomainColor(activity.domain) + '15' }]}>
                                         <Sparkles size={10} color={getDomainColor(activity.domain)} />
                                         <BambiniText variant="caption" weight="bold" color={getDomainColor(activity.domain)} style={{ fontSize: 10, marginLeft: 2 }}>
-                                            Developmental Focus
+                                            {activity.activities?.target_milestone ? `Targets: ${activity.activities.target_milestone}` : "Developmental Focus"}
                                         </BambiniText>
                                     </View>
                                 </View>
@@ -597,6 +643,40 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  growthStatsRowCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    gap: 12,
+  },
+  growthStatItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  dashboardActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 20,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 16,
+    paddingVertical: 4,
+  },
+  dashboardActionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+  },
+  dashboardActionDivider: {
+    width: 1,
+    height: 20,
+    backgroundColor: 'rgba(255,255,255,0.2)',
   },
   sectionHeader: {
     paddingHorizontal: 20,

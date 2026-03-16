@@ -7,6 +7,9 @@ import { decode } from 'base64-arraybuffer';
 import * as ImagePicker from 'expo-image-picker';
 import { Camera, X } from 'lucide-react-native';
 import React, { useState } from 'react';
+import { CelebrationOverlay } from './CelebrationOverlay';
+import { useDailySummary } from '@/hooks/useData';
+import { format } from 'date-fns';
 import {
     Alert,
     Image,
@@ -22,6 +25,9 @@ import {
 
 interface ActivityFeedbackModalProps {
     visible: boolean;
+    childId: string;
+    activityId: string;
+    activityTitle: string;
     onClose: () => void;
     onSubmit: (rating: string, note: string, mediaUrls: string[]) => void;
     isSubmitting: boolean;
@@ -34,9 +40,11 @@ const RATINGS = [
     { value: 'too_hard', label: 'Too hard', emoji: '😓', color: '#FF5252' },
 ];
 
-export function ActivityFeedbackModal({ visible, onClose, onSubmit, isSubmitting, isSuccess }: ActivityFeedbackModalProps) {
+export function ActivityFeedbackModal({ visible, childId, activityId, activityTitle, onClose, onSubmit, isSubmitting, isSuccess }: ActivityFeedbackModalProps) {
     const colorScheme = useColorScheme();
     const theme = Colors[colorScheme === 'dark' ? 'dark' : 'light'];
+    const today = format(new Date(), 'yyyy-MM-dd');
+    const { data: dailySummary } = useDailySummary(childId, today);
 
     const [rating, setRating] = useState<string>('loved_it');
     const [note, setNote] = useState('');
@@ -111,21 +119,8 @@ export function ActivityFeedbackModal({ visible, onClose, onSubmit, isSubmitting
             >
                 <View style={[styles.modalContent, { backgroundColor: colorScheme === 'dark' ? '#1A1A1A' : '#f9f5ea' }]}>
                     <View style={styles.dragHandle} />
-
-                    {isSuccess ? (
-                        <View style={styles.successContainer}>
-                            <BambiniText style={styles.celebrationEmoji}>🎊</BambiniText>
-                            <BambiniText variant="h1" weight="bold" style={{ textAlign: 'center', marginBottom: 8 }}>
-                                Amazing Job!
-                            </BambiniText>
-                            <BambiniText variant="body" style={{ textAlign: 'center', color: '#666666', marginBottom: 32 }}>
-                                You've logged a new memory for your child's developmental journey.
-                            </BambiniText>
-                            <BambiniButton title="Back to Activity" onPress={onClose} style={{ width: '100%' }} />
-                        </View>
-                    ) : (
-                        <>
-                            {/* Header */}
+                    
+                    {/* Header */}
                     <View style={styles.header}>
                         <BambiniText variant="h2" weight="bold">Activity Completed! 🎉</BambiniText>
                         <TouchableOpacity onPress={onClose} style={styles.closeButton}>
@@ -217,8 +212,6 @@ export function ActivityFeedbackModal({ visible, onClose, onSubmit, isSubmitting
                         disabled={isSubmitting || isUploading}
                         style={{ marginTop: 32, marginBottom: Platform.OS === 'ios' ? 20 : 0 }}
                         />
-                        </>
-                    )}
                 </View>
             </KeyboardAvoidingView>
         </Modal>
@@ -235,7 +228,7 @@ const styles = StyleSheet.create({
         borderTopLeftRadius: 40,
         borderTopRightRadius: 40,
         padding: 24,
-        paddingBottom: 40,
+        paddingBottom: Platform.OS === 'ios' ? 48 : 32,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: -8 },
         shadowOpacity: 0.12,

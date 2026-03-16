@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { Activity, BarChart2, Compass, Home, User } from 'lucide-react-native';
+import { Activity, BarChart2, Compass, Home, ShoppingBag, User } from 'lucide-react-native';
 import React from 'react';
 
 import { useColorScheme } from '@/components/useColorScheme';
@@ -55,6 +55,13 @@ export default function TabLayout() {
         options={{
           title: 'Health',
           tabBarIcon: ({ color }) => <Activity size={24} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="shop"
+        options={{
+          title: 'Shop',
+          tabBarIcon: ({ color }) => <ShoppingBag size={24} color={color} />,
         }}
       />
       <Tabs.Screen

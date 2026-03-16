@@ -1,20 +1,24 @@
 import { ActivityFeedbackModal } from '@/components/ActivityFeedbackModal';
+import { CelebrationOverlay } from '@/components/CelebrationOverlay';
+import { MilestoneConfirmationModal } from '@/components/MilestoneConfirmationModal';
 import { BambiniCard } from '@/components/design-system/BambiniCard';
 import { BambiniSkeleton } from '@/components/design-system/BambiniSkeleton';
 import { BambiniText } from '@/components/design-system/BambiniText';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
-import { useCompleteActivity } from '@/hooks/useData';
+import { useCompleteActivity, useDailySummary, useMilestonesCatalog, useToggleChildMilestone, useChildren } from '@/hooks/useData';
 import { supabase } from '@/lib/supabase';
 import { getActivityEmoji, getDomainColor } from '@/utils/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { BookOpen, CheckCircle2, ChevronLeft, Clock, Sparkles } from 'lucide-react-native';
-import React, { useState } from 'react';
-import { Alert, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { BookOpen, CheckCircle2, ChevronLeft, Clock, ShoppingBag, Sparkles, Target } from 'lucide-react-native';
+import React, { useState, useMemo } from 'react';
+import { Alert, Platform, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function ActivityDetailScreen() {
+    const insets = useSafeAreaInsets();
     const { id, childId } = useLocalSearchParams();
     const router = useRouter();
     const colorScheme = useColorScheme();
@@ -53,9 +57,40 @@ export default function ActivityDetailScreen() {
     });
 
     const completeActivity = useCompleteActivity();
+    const toggleMilestone = useToggleChildMilestone();
+    const { data: milestonesCatalog } = useMilestonesCatalog();
+    const { data: allChildren } = useChildren();
+
     const [justCompleted, setJustCompleted] = useState(false);
     const [modalVisible, setModalVisible] = useState(false);
+    const [celebrationVisible, setCelebrationVisible] = useState(false);
+    const [milestoneModalVisible, setMilestoneModalVisible] = useState(false);
     const [isSuccess, setIsSuccess] = useState(false);
+
+    const { data: dailySummary } = useDailySummary(childId as string);
+
+    const child = useMemo(() => {
+        return allChildren?.find(c => c.id === childId);
+    }, [allChildren, childId]);
+
+    const targetMilestone = useMemo(() => {
+        if (!activity?.target_milestone || !milestonesCatalog) return null;
+        
+        const search = activity.target_milestone.trim().toLowerCase();
+        
+        // 1. Try exact match (case-insensitive)
+        let found = milestonesCatalog.find(m => m.title.trim().toLowerCase() === search);
+        
+        // 2. Try partial match if exact fails (e.g. AI adds extra context)
+        if (!found) {
+            found = milestonesCatalog.find(m => 
+                search.includes(m.title.trim().toLowerCase()) || 
+                m.title.trim().toLowerCase().includes(search)
+            );
+        }
+        
+        return found || null;
+    }, [activity, milestonesCatalog]);
 
     const handleOpenModal = () => {
         if (!childId || !id) {
@@ -75,6 +110,13 @@ export default function ActivityDetailScreen() {
                     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                     setJustCompleted(true);
                     setIsSuccess(true);
+                    
+                    // Trigger celebration flow
+                    setModalVisible(false);
+                    setTimeout(() => {
+                        setCelebrationVisible(true);
+                    }, 500);
+
                     queryClient.invalidateQueries({ queryKey: ['activity_completed', id, childId] });
                 },
                 onError: (err) => {
@@ -83,6 +125,25 @@ export default function ActivityDetailScreen() {
                 }
             }
         );
+    };
+
+    const handleCelebrationClose = () => {
+        setCelebrationVisible(false);
+        // If there's a target milestone, show the confirmation modal
+        if (targetMilestone) {
+            setTimeout(() => {
+                setMilestoneModalVisible(true);
+            }, 600);
+        }
+    };
+
+    const handleMilestoneConfirm = (status: 'achieved' | 'emerging' | 'not_yet') => {
+        if (!targetMilestone || !childId) return;
+        toggleMilestone.mutate({
+            childId: childId as string,
+            milestoneId: targetMilestone.id,
+            status,
+        });
     };
 
     const domainColor = getDomainColor(activity?.domain || 'Cognitive');
@@ -124,7 +185,12 @@ export default function ActivityDetailScreen() {
 
     return (
         <View style={{ flex: 1, backgroundColor: '#f9f5ea' }}>
-            <ScrollView style={styles.container} showsVerticalScrollIndicator={false} bounces={false}>
+            <ScrollView 
+                style={styles.container} 
+                showsVerticalScrollIndicator={false} 
+                bounces={false}
+                contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 20) + 100 }}
+            >
                 {/* Hero Header - White Card with Shadow */}
                 <View style={[styles.heroHeader, {
                     shadowColor: domainColor,
@@ -182,8 +248,29 @@ export default function ActivityDetailScreen() {
                         {activity.description}
                     </BambiniText>
 
-                    {/* Extended Description */}
-                    {activity.extended_description && (
+                    {/* The Why (AI Insight) */}
+                    {activity.target_milestone && (
+                        <BambiniCard
+                            style={[styles.whyCard, { backgroundColor: domainColor + '10', borderColor: domainColor + '30', borderWidth: 1 }]}
+                            variant="flat"
+                        >
+                            <View style={styles.whyHeader}>
+                                <Target color={domainColor} size={20} />
+                                <BambiniText variant="h3" weight="bold" color={domainColor} style={{ marginLeft: 8 }}>
+                                    The Why
+                                </BambiniText>
+                            </View>
+                            <BambiniText variant="body" color="#1A1A1A" weight="bold" style={{ marginTop: 12, fontSize: 17 }}>
+                                Targeting: {activity.target_milestone}
+                            </BambiniText>
+                            <BambiniText variant="body" color="#555555" style={{ marginTop: 8, lineHeight: 22 }}>
+                                {activity.extended_description || `This activity was specifically selected by our specialists to help your child practice and master this key developmental milestone.`}
+                            </BambiniText>
+                        </BambiniCard>
+                    )}
+
+                    {/* Extended Description (Legacy fallback) */}
+                    {activity.extended_description && !activity.target_milestone && (
                         <BambiniCard
                             style={[styles.extendedDescCard, { borderColor: domainColor + '30', borderWidth: 1 }]}
                             variant="flat"
@@ -245,6 +332,24 @@ export default function ActivityDetailScreen() {
                                     </View>
                                 ))}
                             </View>
+
+                            {/* Shop Link Banner */}
+                            <TouchableOpacity 
+                                style={[styles.shopProrolledCard, { backgroundColor: domainColor + '08', borderColor: domainColor + '20' }]}
+                                onPress={() => router.push({
+                                    pathname: '/(tabs)/shop',
+                                })}
+                                activeOpacity={0.8}
+                            >
+                                <View style={[styles.shopIconContainer, { backgroundColor: domainColor }]}>
+                                    <ShoppingBag size={20} color="#FFF" />
+                                </View>
+                                <View style={{ flex: 1, marginLeft: 12 }}>
+                                    <BambiniText variant="h3" style={{ fontSize: 16 }}>Need these items?</BambiniText>
+                                    <BambiniText variant="caption" color="#666">Shop the curated material kit for this age group.</BambiniText>
+                                </View>
+                                <ChevronLeft size={20} color={domainColor} style={{ transform: [{ rotate: '180deg' }] }} />
+                            </TouchableOpacity>
                         </View>
                     )}
 
@@ -274,7 +379,10 @@ export default function ActivityDetailScreen() {
 
             {/* Floating Complete Button */}
             {!completed ? (
-                <View style={styles.floatingButtonContainer}>
+                <View style={[
+                    styles.floatingButtonContainer,
+                    { paddingBottom: Math.max(insets.bottom, 20) + 12 }
+                ]}>
                     <TouchableOpacity
                         style={[styles.completeButton, { backgroundColor: domainColor }]}
                         onPress={handleOpenModal}
@@ -287,7 +395,10 @@ export default function ActivityDetailScreen() {
                     </TouchableOpacity>
                 </View>
             ) : (
-                <View style={styles.floatingButtonContainer}>
+                <View style={[
+                    styles.floatingButtonContainer,
+                    { paddingBottom: Math.max(insets.bottom, 20) + 12 }
+                ]}>
                     <View style={[styles.completeButton, { backgroundColor: '#4CAF50' }]}>
                         <CheckCircle2 color="#FFFFFF" size={24} />
                         <BambiniText variant="h3" weight="bold" color="#FFFFFF" style={{ marginLeft: 12 }}>
@@ -299,10 +410,34 @@ export default function ActivityDetailScreen() {
 
             <ActivityFeedbackModal
                 visible={modalVisible}
+                childId={childId as string}
+                activityId={id as string}
+                activityTitle={activity?.title || ''}
                 onClose={() => setModalVisible(false)}
                 onSubmit={handleFeedbackSubmit}
                 isSubmitting={completeActivity.isPending}
                 isSuccess={isSuccess}
+            />
+
+            <CelebrationOverlay
+                visible={celebrationVisible}
+                onClose={handleCelebrationClose}
+                activityTitle={activity?.title || ''}
+                completedCount={dailySummary?.completedCount || 0}
+                goal={dailySummary?.goal || 5}
+            />
+
+            <MilestoneConfirmationModal
+                visible={milestoneModalVisible}
+                onClose={() => setMilestoneModalVisible(false)}
+                childName={child?.name || 'your child'}
+                milestone={targetMilestone ? {
+                    id: targetMilestone.id,
+                    title: targetMilestone.title,
+                    description: targetMilestone.description,
+                    domain: targetMilestone.domain
+                } : null}
+                onConfirm={handleMilestoneConfirm}
             />
         </View>
     );
@@ -409,6 +544,15 @@ const styles = StyleSheet.create({
     sectionBlock: {
         marginBottom: 32,
     },
+    whyCard: {
+        borderRadius: 24,
+        padding: 24,
+        marginBottom: 32,
+    },
+    whyHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
     extendedDescCard: {
         backgroundColor: '#FFFFFF',
         borderRadius: 24,
@@ -501,7 +645,7 @@ const styles = StyleSheet.create({
         right: 0,
         paddingHorizontal: 24,
         paddingVertical: 20,
-        paddingBottom: 40,
+        paddingBottom: Platform.OS === 'ios' ? 44 : 24,
         backgroundColor: 'rgba(249, 245, 234, 0.95)',
     },
     completeButton: {
@@ -516,4 +660,20 @@ const styles = StyleSheet.create({
         shadowRadius: 16,
         elevation: 5,
     },
+    shopProrolledCard: {
+        marginTop: 16,
+        padding: 16,
+        borderRadius: 20,
+        flexDirection: 'row',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderStyle: 'dashed',
+    },
+    shopIconContainer: {
+        width: 40,
+        height: 40,
+        borderRadius: 12,
+        justifyContent: 'center',
+        alignItems: 'center',
+    }
 });
