@@ -14,7 +14,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.bambiniapp"
+      "bundleIdentifier": "com.bambinitracker.app"
     },
     "android": {
       "adaptiveIcon": {
@@ -24,7 +24,7 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.bambiniapp"
+      "package": "com.bambinitracker.app"
     },
     "web": {
       "bundler": "metro",
@@ -38,6 +38,22 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "newArchEnabled": true,
+    "updates": {
+      "url": "https://u.expo.dev/bf38318b-4dca-4970-b4b5-d9599fac6ec3"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "bf38318b-4dca-4970-b4b5-d9599fac6ec3"
+      }
+    },
+    "owner": "triumphtetteh"
   }
 }

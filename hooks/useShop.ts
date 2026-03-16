@@ -26,6 +26,7 @@ export type Order = {
   total_amount: number;
   shipping_address: string;
   contact_phone: string;
+  contact_email?: string;
   items: any;
   paystack_reference?: string;
   created_at: string;
@@ -65,7 +66,7 @@ export function useCreateOrder() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (order: Omit<Order, 'id' | 'created_at' | 'status' | 'user_id'>) => {
+    mutationFn: async (order: Omit<Order, 'id' | 'created_at' | 'user_id'>) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
@@ -74,7 +75,7 @@ export function useCreateOrder() {
         .insert({
           ...order,
           user_id: user.id,
-          status: 'pending',
+          status: order.status || 'pending',
         })
         .select()
         .single();

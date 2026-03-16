@@ -8,7 +8,7 @@ This plan outlines the steps to allow multiple parents or caregivers to track th
 Update the database to support a "Join Code" system.
 
 #### [NEW] `invitations` table
-- `id`: UUID (Primary Key)
+- `id`: UUID (Primary Key) 
 - `inviter_id`: UUID (References `profiles.id`)
 - `child_id`: UUID (References `children.id`)
 - `code`: TEXT (Unique, 6-character alphanumeric code)

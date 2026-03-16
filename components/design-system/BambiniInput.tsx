@@ -28,11 +28,19 @@ export function BambiniInput({ label, error, containerStyle, isPassword, ...prop
                 styles.inputContainer,
                 {
                     backgroundColor: 'rgba(255, 255, 255, 0.65)', // Soft translucent white instead of harsh solid white
-                    borderColor: error ? '#FF6B6B' : 'rgba(43, 196, 169, 0.15)' // Faint primary teal border instead of harsh gray
+                    borderColor: error ? '#FF6B6B' : 'rgba(43, 196, 169, 0.15)', // Faint primary teal border instead of harsh gray
+                    height: props.multiline ? 'auto' : 56,
+                    minHeight: props.multiline ? 100 : 56,
+                    alignItems: props.multiline ? 'flex-start' : 'center',
+                    paddingVertical: props.multiline ? 12 : 0,
                 }
             ]}>
                 <TextInput
-                    style={[styles.input, { color: theme.text }]}
+                    style={[
+                        styles.input, 
+                        { color: theme.text },
+                        props.multiline && { textAlignVertical: 'top' }
+                    ]}
                     placeholderTextColor="#636E72"
                     secureTextEntry={isPassword ? !isPasswordVisible : props.secureTextEntry}
                     {...props}

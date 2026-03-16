@@ -13,7 +13,8 @@ import { ActivityIndicator, Image, ScrollView, StyleSheet, TouchableOpacity, Vie
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PaystackProvider, usePaystack } from 'react-native-paystack-webview';
 import Animated, { FadeInDown, FadeInRight, FadeInUp } from 'react-native-reanimated';
-import { KeyboardAvoidingView, Platform } from 'react-native';
+import { KeyboardAvoidingView, Platform, Alert } from 'react-native';
+import * as Haptics from 'expo-haptics';
 
 export default function CategoryDetailScreen() {
     const { id, name } = useLocalSearchParams<{ id: string, name: string }>();
@@ -61,14 +62,6 @@ export default function CategoryDetailScreen() {
             .reduce((sum, item) => sum + Number(item.price), 0);
     }, [items, selectedIds]);
 
-    const handleCheckout = () => {
-        if (!address || !phone) {
-            alert('Please provide your shipping details');
-            return;
-        }
-        setShowCheckout(true);
-    };
-
     if (isLoading) {
         return (
             <View style={[styles.centered, { backgroundColor: theme.background }]}>
@@ -78,15 +71,6 @@ export default function CategoryDetailScreen() {
     }
 
     return (
-        <PaystackProvider 
-            publicKey="pk_test_placeholder" // USER should replace with real key
-            onGlobalSuccess={(res) => {
-                console.log('Global Success', res);
-            }}
-            onGlobalCancel={() => {
-                console.log('Global Cancel');
-            }}
-        >
             <View style={[styles.container, { backgroundColor: '#f9f5ea' }]}>
                 {/* Curved Header */}
                 <View style={[styles.headerContainer, { backgroundColor: '#f9f5ea' }]}>
@@ -218,7 +202,6 @@ export default function CategoryDetailScreen() {
                                         value={address} 
                                         onChangeText={setAddress}
                                         multiline
-                                        style={{ height: 100, paddingTop: 12 }}
                                     />
                                     <BambiniInput 
                                         placeholder="Phone number (for delivery)" 
@@ -247,29 +230,95 @@ export default function CategoryDetailScreen() {
                                 </View>
                             </Animated.View>
 
-                            <View style={{ marginTop: 24, paddingBottom: 40 }}>
-                                <PaystackCheckoutButton 
-                                    amount={totalPrice}
-                                    email={userEmail}
-                                    phone={phone}
-                                    address={address}
-                                    items={items}
-                                    selectedIds={selectedIds}
-                                    onCreateOrder={(params) => createOrder.mutate(params, {
-                                        onSuccess: () => {
-                                            alert('Order placed successfully! Check your email for confirmation.');
-                                            setShowCheckout(false);
-                                            router.replace('/(tabs)/shop');
-                                        }
-                                    })}
-                                />
+                             <View style={{ marginTop: 24, paddingBottom: 40 }}>
+                                <PaystackProvider 
+                                    publicKey={process.env.EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY || ''}
+                                    currency="GHS"
+                                >
+                                    <CheckoutSection 
+                                        totalPrice={totalPrice}
+                                        userEmail={userEmail}
+                                        address={address}
+                                        phone={phone}
+                                        items={items}
+                                        selectedIds={selectedIds}
+                                        createOrder={createOrder}
+                                        onComplete={() => setShowCheckout(false)}
+                                    />
+                                </PaystackProvider>
                             </View>
                         </ScrollView>
                     </KeyboardAvoidingView>
                 </View>
             </Modal>
             </View>
-        </PaystackProvider>
+    );
+}
+
+function CheckoutSection({ 
+    totalPrice, userEmail, address, phone, items, selectedIds, createOrder, onComplete 
+}: { 
+    totalPrice: number, userEmail: string, address: string, phone: string, 
+    items: any[] | undefined, selectedIds: Set<string>, createOrder: any, onComplete: () => void 
+}) {
+    const paystack = usePaystack();
+    const router = useRouter();
+
+    console.log('CheckoutSection rendered', { totalPrice, userEmail, hasAddress: !!address, hasPhone: !!phone });
+
+    const handlePay = () => {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        
+        const key = process.env.EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY;
+        console.log('handlePay called', { email: userEmail, amount: totalPrice, keyPresent: !!key });
+
+        if (!key) {
+            alert('Paystack key is missing. Check your .env file.');
+            return;
+        }
+
+        // Add a small alert to confirm the button click is working
+        console.log('Attempting to open Paystack popup...');
+        
+        try {
+            paystack.popup.checkout({
+                email: userEmail,
+                amount: totalPrice,
+                onSuccess: (res: any) => {
+                    console.log('Payment Success callback', res);
+                    createOrder.mutate({
+                        total_amount: totalPrice,
+                        shipping_address: address,
+                        contact_phone: phone,
+                        contact_email: userEmail,
+                        items: items?.filter(i => (i && selectedIds.has(i.id))).map(i => ({ id: i.id, name: i.name, price: i.price })),
+                        paystack_reference: res.reference,
+                        status: 'paid'
+                    }, {
+                        onSuccess: () => {
+                            alert('Order placed successfully! Check your email for confirmation.');
+                            onComplete();
+                            router.replace('/(tabs)/shop');
+                        }
+                    });
+                },
+                onCancel: () => {
+                    console.log('Payment Cancelled callback');
+                }
+            });
+            console.log('paystack.popup.checkout called');
+        } catch (err) {
+            console.error('Error calling Paystack checkout:', err);
+        }
+    };
+
+    return (
+        <BambiniButton 
+            title="Pay with Paystack" 
+            onPress={handlePay}
+            disabled={!address || !phone || createOrder.isPending}
+            loading={createOrder.isPending}
+        />
     );
 }
 
@@ -303,53 +352,6 @@ function ImageItem({ url }: { url: string | null }) {
     );
 }
 
-function PaystackCheckoutButton({ 
-    amount, 
-    email, 
-    phone, 
-    address, 
-    items, 
-    selectedIds,
-    onCreateOrder 
-}: { 
-    amount: number, 
-    email: string, 
-    phone: string, 
-    address: string,
-    items: any[] | undefined,
-    selectedIds: Set<string>,
-    onCreateOrder: (params: any) => void
-}) {
-    const paystack = usePaystack();
-
-    const handlePay = () => {
-        paystack.popup.checkout({
-            email,
-            amount: amount * 100, // Paystack expects amount in kobo/cents
-            onSuccess: (res: any) => {
-                console.log('Payment Success', res);
-                onCreateOrder({
-                    total_amount: amount,
-                    shipping_address: address,
-                    contact_phone: phone,
-                    items: items?.filter(i => (i && selectedIds.has(i.id))).map(i => ({ id: i.id, name: i.name, price: i.price })),
-                    paystack_reference: res.reference
-                });
-            },
-            onCancel: () => {
-                console.log('Payment Cancelled');
-            }
-        });
-    };
-
-    return (
-        <BambiniButton 
-            title="Pay with Paystack" 
-            onPress={handlePay}
-            disabled={!address || !phone}
-        />
-    );
-}
 
 const styles = StyleSheet.create({
     container: { flex: 1 },
