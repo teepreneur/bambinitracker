@@ -522,9 +522,22 @@ h2 {
         flex-direction: column; 
         text-align: center; 
     }
+    .navbar .container {
+        padding: 10px 20px;
+        margin: 0 15px;
+        width: calc(100% - 30px);
+    }
+    .logo-icon {
+        height: 32px;
+        width: 32px;
+    }
+    .logo span {
+        font-size: 1.2rem;
+    }
     .nav-links { display: none; }
-    .hero-content { padding-left: 20px; text-align: center; }
-    .hero-btns { justify-content: center; }
+    .hero-content { padding: 0 20px; text-align: center; }
+    .hero-btns { justify-content: center; flex-direction: column; gap: 15px; }
+    .hero-btns .btn { width: 100%; }
     .waitlist-form { flex-direction: column; }
     .check-list li { justify-content: center; }
 }
