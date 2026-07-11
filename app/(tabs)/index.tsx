@@ -53,11 +53,6 @@ export default function HomeScreen() {
   const children = allChildren || [];
   const selectedChild = children.find(c => c.id === selectedChildId) || children[0] || null;
 
-  console.log('--- Home Screen Render ---');
-  console.log('Children count:', children.length);
-  console.log('Selected Child ID:', selectedChildId);
-  console.log('Selected Child Name:', selectedChild?.name);
-
   const userName = profile?.name || profile?.authUser?.user_metadata?.full_name || 'Parent';
 
   // --- Effects ---
@@ -78,7 +73,6 @@ export default function HomeScreen() {
       if (nextAppState === 'active') {
         const today = new Date().toISOString().split('T')[0];
         if (today !== currentDate) {
-          console.log(`[HomeScreen] Date changed from ${currentDate} to ${today}. Rolling over.`);
           setCurrentDate(today);
         }
       }
@@ -90,7 +84,6 @@ export default function HomeScreen() {
     const interval = setInterval(() => {
       const today = new Date().toISOString().split('T')[0];
       if (today !== currentDate) {
-        console.log(`[HomeScreen] Midnight passed while app active! Rolling over.`);
         setCurrentDate(today);
       }
     }, 60000); // check every minute
@@ -115,7 +108,6 @@ export default function HomeScreen() {
   // Auto-sync if we have fewer than 5 activities
   useEffect(() => {
     if (selectedChild?.id && ageDays !== undefined && !loadingActivities && todayActivities.length < 5) {
-      console.log(`[HomeScreen] Triggering sync for ${selectedChild.name}. Current count: ${todayActivities.length}`);
       syncDaily.mutate({
         childId: selectedChild.id,
         ageDays,

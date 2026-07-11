@@ -5,7 +5,7 @@ import { BambiniInput } from '@/components/design-system/BambiniInput';
 import { BambiniText } from '@/components/design-system/BambiniText';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
-import { useShopItems, useCreateOrder } from '@/hooks/useShop';
+import { useShopItems, useCreateOrder, useVerifyPayment } from '@/hooks/useShop';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Check, ChevronLeft, CreditCard, MapPin, ShoppingCart, Sparkles, Package } from 'lucide-react-native';
 import React, { useMemo, useState } from 'react';
@@ -25,6 +25,7 @@ export default function CategoryDetailScreen() {
 
     const { data: items, isLoading } = useShopItems(id);
     const createOrder = useCreateOrder();
+    const verifyPayment = useVerifyPayment();
 
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [showCheckout, setShowCheckout] = useState(false);
@@ -235,7 +236,7 @@ export default function CategoryDetailScreen() {
                                     publicKey={process.env.EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY || ''}
                                     currency="GHS"
                                 >
-                                    <CheckoutSection 
+                                    <CheckoutSection
                                         totalPrice={totalPrice}
                                         userEmail={userEmail}
                                         address={address}
@@ -243,6 +244,7 @@ export default function CategoryDetailScreen() {
                                         items={items}
                                         selectedIds={selectedIds}
                                         createOrder={createOrder}
+                                        verifyPayment={verifyPayment}
                                         onComplete={() => setShowCheckout(false)}
                                     />
                                 </PaystackProvider>
@@ -255,69 +257,68 @@ export default function CategoryDetailScreen() {
     );
 }
 
-function CheckoutSection({ 
-    totalPrice, userEmail, address, phone, items, selectedIds, createOrder, onComplete 
-}: { 
-    totalPrice: number, userEmail: string, address: string, phone: string, 
-    items: any[] | undefined, selectedIds: Set<string>, createOrder: any, onComplete: () => void 
+function CheckoutSection({
+    totalPrice, userEmail, address, phone, items, selectedIds, createOrder, verifyPayment, onComplete
+}: {
+    totalPrice: number, userEmail: string, address: string, phone: string,
+    items: any[] | undefined, selectedIds: Set<string>, createOrder: any, verifyPayment: any, onComplete: () => void
 }) {
     const paystack = usePaystack();
     const router = useRouter();
 
-    console.log('CheckoutSection rendered', { totalPrice, userEmail, hasAddress: !!address, hasPhone: !!phone });
-
-    const handlePay = () => {
+    const handlePay = async () => {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        
-        const key = process.env.EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY;
-        console.log('handlePay called', { email: userEmail, amount: totalPrice, keyPresent: !!key });
 
+        const key = process.env.EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY;
         if (!key) {
             alert('Paystack key is missing. Check your .env file.');
             return;
         }
 
-        // Add a small alert to confirm the button click is working
-        console.log('Attempting to open Paystack popup...');
-        
         try {
+            // 1. Create the order up front as 'pending'. It only becomes 'paid'
+            //    once the server verifies the transaction with Paystack.
+            const order = await createOrder.mutateAsync({
+                total_amount: totalPrice,
+                shipping_address: address,
+                contact_phone: phone,
+                contact_email: userEmail,
+                items: items?.filter(i => (i && selectedIds.has(i.id))).map(i => ({ id: i.id, name: i.name, price: i.price })),
+            });
+
+            // 2. Launch the Paystack popup.
             paystack.popup.checkout({
                 email: userEmail,
                 amount: totalPrice,
-                onSuccess: (res: any) => {
-                    console.log('Payment Success callback', res);
-                    createOrder.mutate({
-                        total_amount: totalPrice,
-                        shipping_address: address,
-                        contact_phone: phone,
-                        contact_email: userEmail,
-                        items: items?.filter(i => (i && selectedIds.has(i.id))).map(i => ({ id: i.id, name: i.name, price: i.price })),
-                        paystack_reference: res.reference,
-                        status: 'paid'
-                    }, {
-                        onSuccess: () => {
-                            alert('Order placed successfully! Check your email for confirmation.');
-                            onComplete();
-                            router.replace('/(tabs)/shop');
-                        }
-                    });
+                reference: order.id,
+                onSuccess: async (res: any) => {
+                    try {
+                        // 3. Verify server-side before treating the order as paid.
+                        await verifyPayment.mutateAsync({ orderId: order.id, reference: res.reference });
+                        alert('Order placed successfully! Check your email for confirmation.');
+                        onComplete();
+                        router.replace('/(tabs)/shop');
+                    } catch (verifyErr: any) {
+                        alert(verifyErr?.message || 'We could not verify your payment. If you were charged, please contact support.');
+                    }
                 },
                 onCancel: () => {
-                    console.log('Payment Cancelled callback');
-                }
+                    // Order stays 'pending'; nothing is marked paid.
+                },
             });
-            console.log('paystack.popup.checkout called');
-        } catch (err) {
-            console.error('Error calling Paystack checkout:', err);
+        } catch (err: any) {
+            alert(err?.message || 'Something went wrong starting your order. Please try again.');
         }
     };
 
+    const isBusy = createOrder.isPending || verifyPayment.isPending;
+
     return (
-        <BambiniButton 
-            title="Pay with Paystack" 
+        <BambiniButton
+            title="Pay with Paystack"
             onPress={handlePay}
-            disabled={!address || !phone || createOrder.isPending}
-            loading={createOrder.isPending}
+            disabled={!address || !phone || isBusy}
+            loading={isBusy}
         />
     );
 }

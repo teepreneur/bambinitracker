@@ -104,7 +104,6 @@ export function useNewbornTips(ageDays: number) {
 
                 if (error) {
                     // Table probably doesn't exist yet — use fallback
-                    console.log('[useNewbornTips] Tips table not available, using fallback');
                     return FALLBACK_NEWBORN_TIPS;
                 }
 
@@ -141,7 +140,6 @@ export function useChildActivities(childId?: string, ageDays?: number, currentDa
         queryKey: ['child_activities', childId, currentDate, 'v5'],
         enabled: !!childId && !!currentDate,
         queryFn: async () => {
-            console.log(`[useChildActivities] Fired! childId: ${childId}, date: ${currentDate}`);
 
             // 1. Fetch activities assigned to this child
             const { data: existingActivities, error: fetchError } = await supabase
@@ -190,7 +188,6 @@ export function useSyncDailyActivities() {
 
     return useMutation({
         mutationFn: async ({ childId, ageDays, currentDate }: { childId: string; ageDays: number; currentDate: string }) => {
-            console.log(`[useSyncDailyActivities] Starting sync for ${currentDate}...`);
 
             // 1. Fetch all assignments
             const { data: existingAssignments, error: fetchError } = await supabase
@@ -217,7 +214,6 @@ export function useSyncDailyActivities() {
             let slotsNeeded = 5 - currentCount;
 
             if (slotsNeeded <= 0) {
-                console.log("[useSyncDailyActivities] Slots already full.");
                 return { synced: 0 };
             }
 
@@ -236,7 +232,6 @@ export function useSyncDailyActivities() {
 
             // 5. TOP-OFF (Gemini)
             if (slotsNeeded > 0) {
-                console.log(`[useSyncDailyActivities] Gemini sync needed: ${slotsNeeded} slots.`);
                 
                 // Fetch recent feedback
                 const { data: recentObs } = await supabase
@@ -353,7 +348,6 @@ export function useCompleteActivity() {
                 .limit(1);
 
             if (existing && existing.length > 0) {
-                console.log("[useCompleteActivity] Already completed, skipping.");
                 return existing[0];
             }
 
@@ -434,13 +428,11 @@ export function useMilestoneSynthesis(childId?: string, childName?: string, ageM
         staleTime: 1000 * 60 * 60 * 2, // 2 hours - Insights are heavy, don't re-run often
         gcTime: 1000 * 60 * 60 * 24, // Keep in cache for a day
         queryFn: async () => {
-            console.log(`[useMilestoneSynthesis] Checking for insights for ${childName}...`);
             if (!childId || !childName || !ageMonths || !observations || !catalog || !childMilestones) return null;
 
             // Only run if we have at least 3 observations with notes to avoid low-quality AI results
             const noteObs = observations.filter(o => o.note && o.note.trim().length > 10);
             if (noteObs.length < 3) {
-                console.log(`[useMilestoneSynthesis] Not enough high-quality notes (${noteObs.length}/3). Skipping AI.`);
                 return null;
             }
 
@@ -540,7 +532,7 @@ export function useDailySummary(childId?: string, date?: string) {
                 .from('child_activities')
                 .select('activity_id')
                 .eq('child_id', childId)
-                .gte('assigned_at', `${effectiveDate}T00:00:000Z`)
+                .gte('assigned_at', `${effectiveDate}T00:00:00.000Z`)
                 .lte('assigned_at', `${effectiveDate}T23:59:59.999Z`);
 
             const assignedIds = (assignments || []).map(a => a.activity_id);
@@ -677,11 +669,13 @@ export function useGenerateInviteCode() {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) throw new Error('Not authenticated');
 
-            // Generate a random 6-character alphanumeric code
+            // Generate a random 6-character alphanumeric code using a CSPRNG
             const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // No I/O/0/1 to avoid confusion
+            const randomBytes = new Uint8Array(6);
+            (globalThis.crypto ?? crypto).getRandomValues(randomBytes);
             let code = '';
             for (let i = 0; i < 6; i++) {
-                code += chars.charAt(Math.floor(Math.random() * chars.length));
+                code += chars.charAt(randomBytes[i] % chars.length);
             }
 
             // Set expiry to 48 hours from now
@@ -700,6 +694,7 @@ export function useGenerateInviteCode() {
                 .select()
                 .single();
 
+            if (error) throw error;
             return data;
         },
     });

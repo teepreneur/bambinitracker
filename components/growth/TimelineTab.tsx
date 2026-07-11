@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { View, ActivityIndicator, StyleSheet, Image, TouchableOpacity } from 'react-native';
 import { BambiniText } from '../design-system/BambiniText';
+import { SignedImage } from '../SignedImage';
 import { useChildObservations } from '@/hooks/useData';
 import { getDomainColor, getDomainEmoji } from '@/utils/ui';
 import { Sparkles, Camera, MapPin, Heart } from 'lucide-react-native';
@@ -69,7 +70,7 @@ export function TimelineTab({ childId, childName, theme }: TimelineTabProps) {
                                 <TouchableOpacity activeOpacity={0.9} style={[styles.scrapbookCard, { borderColor: theme.border }]}>
                                     {hasImage ? (
                                         <View style={styles.imageHeader}>
-                                            <Image source={{ uri: obs.media_urls[0] }} style={styles.observationImage} />
+                                            <SignedImage path={obs.media_urls[0]} style={styles.observationImage} />
                                             <View style={[styles.domainBadge, { backgroundColor: domainColor }]}>
                                                 <BambiniText variant="caption" weight="bold" color="#FFFFFF">
                                                     {getDomainEmoji(act.domain)} {act.domain}

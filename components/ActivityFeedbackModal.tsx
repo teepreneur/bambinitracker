@@ -80,7 +80,7 @@ export function ActivityFeedbackModal({ visible, childId, activityId, activityTi
             setIsUploading(true);
             try {
                 const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`;
-                const { data, error } = await supabase.storage
+                const { error } = await supabase.storage
                     .from('observations')
                     .upload(fileName, decode(imageBase64), {
                         contentType: 'image/jpeg',
@@ -88,13 +88,9 @@ export function ActivityFeedbackModal({ visible, childId, activityId, activityTi
 
                 if (error) throw error;
 
-                const { data: publicUrlData } = supabase.storage
-                    .from('observations')
-                    .getPublicUrl(fileName);
-
-                if (publicUrlData) {
-                    uploadedUrls.push(publicUrlData.publicUrl);
-                }
+                // Store the object path (not a public URL). The bucket is
+                // private; media is displayed via short-lived signed URLs.
+                uploadedUrls.push(fileName);
             } catch (err: any) {
                 console.error("Upload error:", err);
                 Alert.alert("Upload Failed", "Could not upload the image. Proceeding without it.");
