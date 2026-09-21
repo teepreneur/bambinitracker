@@ -6,8 +6,8 @@ export function useChildren() {
     return useQuery({
         queryKey: ['children'],
         queryFn: async () => {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) throw new Error('Not authenticated');
+            const { data: { user }, error: authError } = await supabase.auth.getUser();
+            if (authError || !user) throw new Error('Not authenticated');
 
             const { data, error } = await supabase
                 .from('parent_children')
@@ -21,6 +21,7 @@ export function useChildren() {
 
             return data.map((pc: any) => pc.children).filter(Boolean);
         },
+        staleTime: 0,
     });
 }
 

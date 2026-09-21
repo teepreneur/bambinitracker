@@ -3,6 +3,7 @@ import { BambiniInput } from '@/components/design-system/BambiniInput';
 import { BambiniText } from '@/components/design-system/BambiniText';
 import Colors from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
+import { clearAppCache } from '@/lib/query';
 import { useRouter } from 'expo-router';
 import { ChevronLeft } from 'lucide-react-native';
 import React, { useState } from 'react';
@@ -37,6 +38,9 @@ export default function LoginScreen() {
         }
 
         setLoading(true);
+        // Clear any old user cache before authenticating
+        await clearAppCache();
+
         const { error } = await supabase.auth.signInWithPassword({
             email: trimmedEmail,
             password,
@@ -49,6 +53,7 @@ export default function LoginScreen() {
                 Alert.alert('Error', error.message);
             }
         } else {
+            await clearAppCache();
             router.replace('/(tabs)');
         }
         setLoading(false);

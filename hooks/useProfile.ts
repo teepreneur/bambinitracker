@@ -6,17 +6,23 @@ export function useProfile() {
     return useQuery({
         queryKey: ['profile'],
         queryFn: async () => {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) throw new Error('Not authenticated');
+            const { data: { user }, error: authError } = await supabase.auth.getUser();
+            if (authError || !user) throw new Error('Not authenticated');
 
-            const { data: profile } = await supabase
+            const { data: profile, error } = await supabase
                 .from('profiles')
                 .select('*')
                 .eq('id', user.id)
                 .single();
 
+            if (error) {
+                if (__DEV__) console.error('[useProfile] Error fetching profile:', error);
+                throw error;
+            }
+
             return { ...profile, authUser: user };
         },
+        staleTime: 0,
     });
 }
 

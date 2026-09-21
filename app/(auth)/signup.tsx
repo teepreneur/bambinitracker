@@ -3,6 +3,7 @@ import { BambiniInput } from '@/components/design-system/BambiniInput';
 import { BambiniText } from '@/components/design-system/BambiniText';
 import Colors from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
+import { clearAppCache } from '@/lib/query';
 import { useRouter } from 'expo-router';
 import { ChevronLeft } from 'lucide-react-native';
 import React, { useState } from 'react';
@@ -46,6 +47,8 @@ export default function SignUpScreen() {
         }
 
         setLoading(true);
+        await clearAppCache();
+
         const {
             data: { session },
             error,
@@ -70,6 +73,7 @@ export default function SignUpScreen() {
             Alert.alert('Check your email!', 'We have sent a confirmation link to your email address.');
             router.push('/(auth)/login');
         } else {
+            await clearAppCache();
             router.replace('/(tabs)');
         }
         setLoading(false);

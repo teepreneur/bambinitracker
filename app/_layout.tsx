@@ -60,7 +60,7 @@ export default function RootLayout() {
 }
 
 import { supabase } from '@/lib/supabase';
-import { queryClient, asyncStoragePersister } from '@/lib/query';
+import { queryClient, asyncStoragePersister, clearAppCache } from '@/lib/query';
 import { Session } from '@supabase/supabase-js';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 
@@ -75,8 +75,11 @@ function RootLayoutNav() {
       setInitialized(true);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
+      if (event === 'SIGNED_OUT' || event === 'SIGNED_IN' || event === 'USER_UPDATED') {
+        await clearAppCache();
+      }
+      setSession(newSession);
     });
 
     return () => {

@@ -18,3 +18,17 @@ const isNode = typeof window === 'undefined';
 export const asyncStoragePersister = createAsyncStoragePersister({
     storage: isNode ? undefined : AsyncStorage,
 });
+
+/**
+ * Purges both in-memory queries and the offline AsyncStorage cache.
+ * Must be called on sign-in, sign-out, and auth state changes.
+ */
+export async function clearAppCache() {
+    try {
+        await queryClient.cancelQueries();
+        queryClient.clear();
+        await asyncStoragePersister.removeClient();
+    } catch (e) {
+        if (__DEV__) console.warn('[clearAppCache] Error clearing cache:', e);
+    }
+}

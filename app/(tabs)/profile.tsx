@@ -6,6 +6,7 @@ import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
 import { useChildren, useProfile } from '@/hooks/useData';
 import { supabase } from '@/lib/supabase';
+import { clearAppCache } from '@/lib/query';
 import { getChildAgeShort } from '@/utils/childAge';
 import { useRouter } from 'expo-router';
 import {
@@ -23,10 +24,9 @@ export default function ProfileScreen() {
     const theme = Colors[colorScheme === 'dark' ? 'dark' : 'light'];
 
     const { data: profile } = useProfile();
-    const { data: allChildren } = useChildren();
-    const children = allChildren || [];
+    const { data: children = [] } = useChildren();
 
-    const userName = profile?.name || profile?.authUser?.user_metadata?.full_name || 'Parent';
+    const userName = profile?.name || profile?.authUser?.user_metadata?.full_name || 'Parent User';
     const userEmail = profile?.email || profile?.authUser?.email || '';
     const userRole = profile?.role || profile?.authUser?.user_metadata?.role || 'parent';
     const avatarUrl = profile?.avatar_url;
@@ -48,7 +48,9 @@ export default function ProfileScreen() {
                     text: 'Sign Out',
                     style: 'destructive',
                     onPress: async () => {
+                        await clearAppCache();
                         const { error } = await supabase.auth.signOut();
+                        await clearAppCache();
                         if (error) {
                             Alert.alert('Error', error.message);
                         } else {

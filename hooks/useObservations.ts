@@ -34,6 +34,7 @@ export function useUserObservations() {
 
             return observations || [];
         },
+        staleTime: 0,
     });
 }
 
