@@ -19,16 +19,42 @@ export default function SignUpScreen() {
     const [loading, setLoading] = useState(false);
 
     async function signUpWithEmail() {
+        const trimmedName = name.trim();
+        const trimmedEmail = email.trim();
+
+        // Validate name
+        if (!trimmedName || trimmedName.length < 2) {
+            Alert.alert('Name Required', 'Please enter your full name (at least 2 characters).');
+            return;
+        }
+
+        // Validate email format
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!trimmedEmail) {
+            Alert.alert('Email Required', 'Please enter your email address.');
+            return;
+        }
+        if (!emailRegex.test(trimmedEmail)) {
+            Alert.alert('Invalid Email', 'Please enter a valid email address.');
+            return;
+        }
+
+        // Validate password strength
+        if (password.length < 8) {
+            Alert.alert('Weak Password', 'Password must be at least 8 characters long.');
+            return;
+        }
+
         setLoading(true);
         const {
             data: { session },
             error,
         } = await supabase.auth.signUp({
-            email,
+            email: trimmedEmail,
             password,
             options: {
                 data: {
-                    full_name: name,
+                    full_name: trimmedName,
                     role: role,
                 },
             },

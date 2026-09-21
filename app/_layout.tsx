@@ -60,24 +60,9 @@ export default function RootLayout() {
 }
 
 import { supabase } from '@/lib/supabase';
+import { queryClient, asyncStoragePersister } from '@/lib/query';
 import { Session } from '@supabase/supabase-js';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
-import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      gcTime: 1000 * 60 * 60 * 24, // 24 hours
-      staleTime: 1000 * 60 * 5, // 5 minutes
-    },
-  },
-});
-
-const asyncStoragePersister = createAsyncStoragePersister({
-  storage: AsyncStorage,
-});
 
 function RootLayoutNav() {
   const colorScheme = useColorScheme();
@@ -90,9 +75,13 @@ function RootLayoutNav() {
       setInitialized(true);
     });
 
-    supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
     });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   return (

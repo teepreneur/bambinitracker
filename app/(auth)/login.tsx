@@ -17,9 +17,28 @@ export default function LoginScreen() {
     const [loading, setLoading] = useState(false);
 
     async function signInWithEmail() {
+        const trimmedEmail = email.trim();
+
+        // Validate email format
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!trimmedEmail) {
+            Alert.alert('Email Required', 'Please enter your email address.');
+            return;
+        }
+        if (!emailRegex.test(trimmedEmail)) {
+            Alert.alert('Invalid Email', 'Please enter a valid email address.');
+            return;
+        }
+
+        // Validate password
+        if (!password) {
+            Alert.alert('Password Required', 'Please enter your password.');
+            return;
+        }
+
         setLoading(true);
         const { error } = await supabase.auth.signInWithPassword({
-            email,
+            email: trimmedEmail,
             password,
         });
 
@@ -33,6 +52,32 @@ export default function LoginScreen() {
             router.replace('/(tabs)');
         }
         setLoading(false);
+    }
+
+    async function handleForgotPassword() {
+        if (!email.trim()) {
+            Alert.alert('Email Required', 'Please enter your email address first, then tap Forgot Password.');
+            return;
+        }
+
+        Alert.alert(
+            'Reset Password',
+            `We'll send a password reset link to ${email.trim()}. Continue?`,
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Send Reset Link',
+                    onPress: async () => {
+                        const { error } = await supabase.auth.resetPasswordForEmail(email.trim());
+                        if (error) {
+                            Alert.alert('Error', error.message);
+                        } else {
+                            Alert.alert('Check Your Email', 'If an account exists for this email, you will receive a password reset link shortly.');
+                        }
+                    },
+                },
+            ]
+        );
     }
 
     return (
@@ -75,7 +120,7 @@ export default function LoginScreen() {
                         style={styles.submitBtn}
                     />
 
-                    <TouchableOpacity style={styles.forgotPass}>
+                    <TouchableOpacity style={styles.forgotPass} onPress={handleForgotPassword}>
                         <BambiniText variant="body" color={theme.textSecondary}>Forgot Password?</BambiniText>
                     </TouchableOpacity>
                 </View>
