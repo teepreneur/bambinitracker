@@ -103,18 +103,58 @@ graph TD
 
 ---
 
-## 4. Next Steps & Remaining Tasks for Launch
+## 4. Next Steps & Developer Action Plan
 
-Here are the highest-priority tasks remaining to finalize before production deployment:
+Your primary assignment begins with **polishing and verifying the Authentication system**, followed by a **rigorous end-to-end audit of every tab, link, modal, and feature** in the application.
+
+---
+
+### Phase 1: Authentication & Onboarding Polish (Immediate Starting Point)
+
+Start in `app/(auth)/` (`login.tsx`, `signup.tsx`, `welcome.tsx`):
+
+1. **Sign Up & Registration Flow:**
+   * Verify registration for both **Parent** and **Teacher** roles.
+   * Test form field validation (name, email format regex, minimum 8-character password).
+   * Ensure friendly inline error feedback and keyboard avoidance (`KeyboardAvoidingView` / dismiss on tap outside).
+   * Verify email verification flow and onboarding redirection.
+
+2. **Login & Session Management:**
+   * Verify `supabase.auth.signInWithPassword()` error handling (e.g. wrong credentials, unverified email, network drop).
+   * Test **Forgot Password** email delivery and reset password link redirect.
+   * Verify persistent sessions across app kills and simulator/device relaunches.
+   * Confirm that `clearAppCache()` cleanly purges TanStack Query and `AsyncStorage` caches so no user data ever bleeds across account switches.
+
+3. **Sign Out Flow:**
+   * Test sign out from `app/(tabs)/profile.tsx` to verify clean cache purge and redirection to `/(auth)/welcome`.
+
+---
+
+### Phase 2: Systematic Feature, Tab & Link Testing Matrix
+
+Once Auth is 100% solid, walk through every screen and test every interactive element:
+
+| Screen / Feature | Key Tests & Verification Points |
+| :--- | :--- |
+| **Home (`app/(tabs)/index.tsx`)** | • Multi-child switcher (avatar selection & active border)<br>• Greeting & streak counter accuracy<br>• Daily activity generation & sync (5 activities/day)<br>• Activity checkbox completion & progress ring calculation<br>• Newborn tips & developmental advice cards |
+| **Milestones (`app/(tabs)/milestones.tsx`)** | • Domain filters (Cognitive, Language, Physical, Social, Sensory)<br>• Toggling milestone achieved status and checking database persistence<br>• AI Milestone Synthesis generation (verifies `gemini-proxy` Edge Function) |
+| **Growth Tracker (`app/(tabs)/growth.tsx`)** | • Adding, editing, and deleting measurements (weight, height, head circumference)<br>• Chart rendering and WHO growth percentile curves<br>• Unit toggling (Metric vs. Imperial) |
+| **Activities Library (`app/(tabs)/activities.tsx`)** | • Age-appropriate activity browsing and search<br>• Activity detail modal and duration timers<br>• Photo capture / upload via `expo-image-picker`<br>• Observation logging and feedback submission |
+| **Profile & Settings (`app/(tabs)/profile.tsx`)** | • Profile details editing (name, phone, avatar)<br>• Child management: Add Child, Edit Child details, Delete Child<br>• Teacher / Partner invite code generation (`crypto.getRandomValues`)<br>• Sign Out confirmation alert and cache flush |
+| **Navigation & Modals** | • Verify all bottom navigation tabs switch smoothly without re-render flickers<br>• Verify all back buttons (`router.back()`), close buttons, and sheet gestures work properly<br>• Verify deep links and modal presentations (`presentation: 'modal'`) |
+
+---
+
+### Phase 3: Backend, Security & Deployment Checklist
+
+After client-side features are verified:
 
 1. **Paystack Webhook Verification:**
-   * Move payment completion handling to a Supabase Edge Function webhook listener to verify transactions server-side before activating subscriptions.
+   * Move subscription activation from client-side callbacks to a secure Supabase Edge Function webhook listener.
 2. **Database Row Level Security (RLS) Audit:**
-   * Ensure custom policies on `growth_measurements`, `child_milestones`, and `health_logs` enforce parent ownership (`check_child_access`) rather than `USING (true)`.
-3. **Home Screen Component Extraction:**
-   * `app/(tabs)/index.tsx` is currently ~900 lines; extracting sub-components (Header, StreakWidget, ActivityCard, TipsCard) will improve maintainability.
-4. **App Store & EAS Build Configuration:**
-   * Review `eas.json` for production build profiles.
-   * Generate app icon and splash screen assets across iOS and Android sizes.
-5. **End-to-End Testing:**
-   * Test complete user onboarding: Signup → Add Child → Complete Daily Activities → Log Growth → Generate Milestone Synthesis.
+   * Update RLS policies on `growth_measurements`, `child_milestones`, and `health_logs` to enforce parent ownership (`check_child_access`) rather than permissive `USING (true)`.
+3. **App Permissions (`app.json`):**
+   * Ensure `expo-image-picker` has clear permission strings (`photosPermission`, `cameraPermission`) to prevent Apple TestFlight ingestion rejection (`ITMS-90683`).
+4. **EAS Build & Release Setup (`eas.json`):**
+   * Configure `preview` profile with `"buildType": "apk"` for direct Android test downloads.
+   * Configure `production` profile with `"autoIncrement": true` for iOS TestFlight submission.
