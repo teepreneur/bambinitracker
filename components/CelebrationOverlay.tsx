@@ -82,7 +82,7 @@ export function CelebrationOverlay({ visible, onClose, completedCount, goal, act
 
     const handleShare = async () => {
         const message = `Just finished "${activityTitle}" with my little one on Bambini! 🎊 We've done ${completedCount}/${goal} activities today. Tracking every milestone! 👶✨`;
-        
+
         try {
             const result = await Share.share({
                 message,
@@ -93,6 +93,8 @@ export function CelebrationOverlay({ visible, onClose, completedCount, goal, act
             }
         } catch (error) {
             console.error('Sharing error:', error);
+        } finally {
+            onClose();
         }
     };
 
@@ -231,8 +233,12 @@ export function CelebrationOverlay({ visible, onClose, completedCount, goal, act
 
 const styles = StyleSheet.create({
     overlay: {
-        ...StyleSheet.absoluteFillObject,
-        backgroundColor: 'rgba(0,0,0,0.8)',
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: '#0A1F1E',
         justifyContent: 'center',
         alignItems: 'center',
         zIndex: 1000,

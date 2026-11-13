@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { View, ActivityIndicator, StyleSheet, Image, TouchableOpacity } from 'react-native';
 import { BambiniText } from '../design-system/BambiniText';
 import { useChildObservations } from '@/hooks/useData';
+import { useSignedMediaUrl } from '@/hooks/useObservations';
 import { getDomainColor, getDomainEmoji } from '@/utils/ui';
 import { Sparkles, Camera, MapPin, Heart } from 'lucide-react-native';
 
@@ -10,6 +11,25 @@ interface TimelineTabProps {
     childName: string;
     theme: any;
 }
+
+/** Renders an observation photo via a short-lived signed URL (private bucket). */
+function ObservationImage({ path, style }: { path: string; style: object }) {
+    const { data: signedUrl, isLoading } = useSignedMediaUrl('activities', path);
+
+    if (!isLoading && !signedUrl) return null;
+
+    if (isLoading || !signedUrl) {
+        return (
+            <View style={[style, observationImagePlaceholder]}>
+                <ActivityIndicator size="small" />
+            </View>
+        );
+    }
+
+    return <Image source={{ uri: signedUrl }} style={style} />;
+}
+
+const observationImagePlaceholder = { justifyContent: 'center' as const, alignItems: 'center' as const };
 
 export function TimelineTab({ childId, childName, theme }: TimelineTabProps) {
     const { data: observations, isLoading } = useChildObservations(childId);
@@ -69,7 +89,7 @@ export function TimelineTab({ childId, childName, theme }: TimelineTabProps) {
                                 <TouchableOpacity activeOpacity={0.9} style={[styles.scrapbookCard, { borderColor: theme.border }]}>
                                     {hasImage ? (
                                         <View style={styles.imageHeader}>
-                                            <Image source={{ uri: obs.media_urls[0] }} style={styles.observationImage} />
+                                            <ObservationImage path={obs.media_urls[0]} style={styles.observationImage} />
                                             <View style={[styles.domainBadge, { backgroundColor: domainColor }]}>
                                                 <BambiniText variant="caption" weight="bold" color="#FFFFFF">
                                                     {getDomainEmoji(act.domain)} {act.domain}

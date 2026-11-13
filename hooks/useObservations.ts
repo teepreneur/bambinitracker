@@ -1,5 +1,26 @@
 import { supabase } from '@/lib/supabase';
+import { createMediaSignedUrl, MEDIA_BUCKETS, MediaBucket } from '@/lib/storage';
 import { useQuery } from '@tanstack/react-query';
+
+const SIGNED_URL_EXPIRES_IN_SECONDS = 3600;
+
+/**
+ * Resolves a stored media path (from `observations.media_urls`) into a
+ * short-lived signed URL. Legs live in the private `activities` bucket, so
+ * paths must be signed at render time — the stored value is NOT fetchable.
+ */
+export function useSignedMediaUrl(bucket: MediaBucket, path?: string | null) {
+    return useQuery({
+        queryKey: ['media_signed_url', bucket, path],
+        enabled: !!path,
+        staleTime: 50 * 60 * 1000,
+        gcTime: 60 * 60 * 1000,
+        queryFn: async () => {
+            const url = await createMediaSignedUrl(bucket, path!, SIGNED_URL_EXPIRES_IN_SECONDS);
+            return url;
+        },
+    });
+}
 
 /** Fetch observations for the current user's children */
 export function useUserObservations() {

@@ -65,7 +65,6 @@ export default function ActivityDetailScreen() {
     const [modalVisible, setModalVisible] = useState(false);
     const [celebrationVisible, setCelebrationVisible] = useState(false);
     const [milestoneModalVisible, setMilestoneModalVisible] = useState(false);
-    const [isSuccess, setIsSuccess] = useState(false);
 
     const { data: dailySummary } = useDailySummary(childId as string);
 
@@ -98,7 +97,6 @@ export default function ActivityDetailScreen() {
             return;
         }
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        setIsSuccess(false);
         setModalVisible(true);
     };
 
@@ -109,13 +107,14 @@ export default function ActivityDetailScreen() {
                 onSuccess: () => {
                     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                     setJustCompleted(true);
-                    setIsSuccess(true);
-                    
-                    // Trigger celebration flow
+
+                    // Swap feedback modal for the celebration overlay. The overlay's
+                    // opaque backdrop covers the detail screen, so the "Activity
+                    // Completed!" button never shows alongside it.
                     setModalVisible(false);
                     setTimeout(() => {
                         setCelebrationVisible(true);
-                    }, 500);
+                    }, 250);
 
                     queryClient.invalidateQueries({ queryKey: ['activity_completed', id, childId] });
                 },
@@ -416,7 +415,6 @@ export default function ActivityDetailScreen() {
                 onClose={() => setModalVisible(false)}
                 onSubmit={handleFeedbackSubmit}
                 isSubmitting={completeActivity.isPending}
-                isSuccess={isSuccess}
             />
 
             <CelebrationOverlay

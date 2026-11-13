@@ -1,7 +1,6 @@
 import { Inter_400Regular, Inter_500Medium, useFonts as useInterFonts } from '@expo-google-fonts/inter';
 import { Nunito_600SemiBold, Nunito_700Bold, useFonts as useNunitoFonts } from '@expo-google-fonts/nunito';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
@@ -92,16 +91,14 @@ function RootLayoutNav() {
       client={queryClient}
       persistOptions={{ persister: asyncStoragePersister }}
     >
-      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <Stack screenOptions={{ headerShown: false }}>
-          {!session ? (
-            <Stack.Screen name="(auth)" />
-          ) : (
-            <Stack.Screen name="(tabs)" />
-          )}
-          <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
-        </Stack>
-      </ThemeProvider>
+      <Stack screenOptions={{ headerShown: false }}>
+        {!session ? (
+          <Stack.Screen name="(auth)" />
+        ) : (
+          <Stack.Screen name="(tabs)" />
+        )}
+        <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
+      </Stack>
     </PersistQueryClientProvider>
   );
 }

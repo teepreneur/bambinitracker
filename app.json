@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Bambini",
-    "slug": "bambini-app",
+    "slug": "bambini",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -51,9 +51,9 @@
         "origin": false
       },
       "eas": {
-        "projectId": "bf38318b-4dca-4970-b4b5-d9599fac6ec3"
+        "projectId": "6cf056b6-8133-41d8-bd90-5e325dc6fb5f"
       }
     },
-    "owner": "triumphtetteh"
+    "owner": "greatasanis-team"
   }
 }

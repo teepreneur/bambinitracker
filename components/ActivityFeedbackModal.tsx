@@ -2,8 +2,7 @@ import { BambiniButton } from '@/components/design-system/BambiniButton';
 import { BambiniText } from '@/components/design-system/BambiniText';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
-import { supabase } from '@/lib/supabase';
-import { decode } from 'base64-arraybuffer';
+import { uploadObservationMedia, extractUploadError } from '@/lib/storage';
 import * as ImagePicker from 'expo-image-picker';
 import { Camera, X } from 'lucide-react-native';
 import React, { useState } from 'react';
@@ -31,7 +30,6 @@ interface ActivityFeedbackModalProps {
     onClose: () => void;
     onSubmit: (rating: string, note: string, mediaUrls: string[]) => void;
     isSubmitting: boolean;
-    isSuccess?: boolean;
 }
 
 const RATINGS = [
@@ -40,7 +38,7 @@ const RATINGS = [
     { value: 'too_hard', label: 'Too hard', emoji: '😓', color: '#FF5252' },
 ];
 
-export function ActivityFeedbackModal({ visible, childId, activityId, activityTitle, onClose, onSubmit, isSubmitting, isSuccess }: ActivityFeedbackModalProps) {
+export function ActivityFeedbackModal({ visible, childId, activityId, activityTitle, onClose, onSubmit, isSubmitting }: ActivityFeedbackModalProps) {
     const colorScheme = useColorScheme();
     const theme = Colors[colorScheme === 'dark' ? 'dark' : 'light'];
     const today = format(new Date(), 'yyyy-MM-dd');
@@ -50,6 +48,7 @@ export function ActivityFeedbackModal({ visible, childId, activityId, activityTi
     const [note, setNote] = useState('');
     const [imageUri, setImageUri] = useState<string | null>(null);
     const [imageBase64, setImageBase64] = useState<string | null>(null);
+    const [pickedMime, setPickedMime] = useState<string | null>(null);
     const [isUploading, setIsUploading] = useState(false);
 
     const handlePickImage = async () => {
@@ -70,40 +69,39 @@ export function ActivityFeedbackModal({ visible, childId, activityId, activityTi
         if (!result.canceled && result.assets[0]) {
             setImageUri(result.assets[0].uri);
             setImageBase64(result.assets[0].base64 || null);
+            setPickedMime(result.assets[0].mimeType || 'image/jpeg');
         }
     };
 
     const handleSubmit = async () => {
         let uploadedUrls: string[] = [];
+        let uploadFailure: string | null = null;
 
         if (imageBase64) {
             setIsUploading(true);
             try {
-                const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`;
-                const { data, error } = await supabase.storage
-                    .from('observations')
-                    .upload(fileName, decode(imageBase64), {
-                        contentType: 'image/jpeg',
-                    });
-
-                if (error) throw error;
-
-                const { data: publicUrlData } = supabase.storage
-                    .from('observations')
-                    .getPublicUrl(fileName);
-
-                if (publicUrlData) {
-                    uploadedUrls.push(publicUrlData.publicUrl);
-                }
-            } catch (err: any) {
-                console.error("Upload error:", err);
-                Alert.alert("Upload Failed", "Could not upload the image. Proceeding without it.");
+                const uploaded = await uploadObservationMedia(imageBase64, {
+                    activityId,
+                    mimeType: pickedMime || undefined,
+                });
+                uploadedUrls.push(uploaded.path);
+            } catch (err: unknown) {
+                uploadFailure = extractUploadError(err);
+                console.error('Upload error:', uploadFailure, err);
             } finally {
                 setIsUploading(false);
             }
         }
 
         onSubmit(rating, note, uploadedUrls);
+
+        if (uploadFailure) {
+            Alert.alert(
+                'Image upload failed',
+                `${uploadFailure}\n\nSaving your feedback without the photo.`,
+                [{ text: 'OK' }],
+            );
+        }
     };
 
     return (

@@ -162,7 +162,7 @@ IMPORTANT: Return the data STRICTLY as a JSON array of objects matching the fiel
 `;
 
   const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
+    model: "gemini-3.8-flash",
     contents: prompt,
     config: { temperature: 0.7 },
   });
@@ -260,7 +260,7 @@ Strictly raw JSON. Do not include markdown.
 `;
 
   const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
+    model: "gemini-3.8-flash",
     contents: prompt,
     config: { temperature: 0.1 },
   });
